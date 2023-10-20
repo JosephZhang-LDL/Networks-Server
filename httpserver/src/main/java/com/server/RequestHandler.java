@@ -12,6 +12,8 @@ public class RequestHandler {
     public RequestHandler(String header) {
         // Reach each header field line into a hash table
         String[] headerLines = header.split("\r\n");
+
+        // Initial parsing of data
         for (String line : headerLines) {
             String[] lineSplit = line.split(":", 2);
             // If it's the method header
@@ -27,9 +29,16 @@ public class RequestHandler {
             }
         }
 
+        // Parse Individual elements
+        // if accept header
+
         // Print out the hash table
         for (String key : this.headerFields.keySet()) {
             System.out.println(key + ": " + this.headerFields.get(key));
         }
+    }
+
+    public String getMethod() {
+        return this.headerFields.get("METHOD");
     }
 }

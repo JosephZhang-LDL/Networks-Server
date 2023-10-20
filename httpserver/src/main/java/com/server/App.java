@@ -17,6 +17,7 @@ public final class App {
         "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==\r\n" +
         "Content-Length: 13\r\n" +
         "Content-Type: application/x-www-form-urlencoded\r\n";
+
         RequestHandler handler = new RequestHandler(sampleHeader);
     }
 }
