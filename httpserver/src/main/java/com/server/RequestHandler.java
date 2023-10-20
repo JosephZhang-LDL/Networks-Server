@@ -1,5 +1,6 @@
 package com.server;
 
+import java.util.Date;
 import java.util.Hashtable;
 
 public class RequestHandler {
@@ -14,7 +15,8 @@ public class RequestHandler {
         String[] headerLines = header.split("\r\n");
 
         // Initial parsing of data
-        for (String line : headerLines) {
+        for (int i = 0; i < headerLines.length; i++) {
+            String line = headerLines[i];
             String[] lineSplit = line.split(":", 2);
             // If it's the method header
             if (lineSplit.length < 2) {
@@ -23,7 +25,7 @@ public class RequestHandler {
                 this.headerFields.put("PATH", lineSplit[1]);
                 this.headerFields.put("VERSION", lineSplit[2]);
             }
-            // Otherwise use header's field name 
+            // Otherwise use header's field name
             else {
                 this.headerFields.put(lineSplit[0], lineSplit[1]);
             }
@@ -40,5 +42,31 @@ public class RequestHandler {
 
     public String getMethod() {
         return this.headerFields.get("METHOD");
+    }
+
+    public String handleGet() {
+
+        // Parse the following fields to choose content: Accept, If-Modified-Since, Authorization
+
+        // On Success
+        String responseBody = "This is the response body.";
+        Date lastModified = new Date();
+        String contentType = "text/plain";
+        String response = "HTTP/1.1 200 OK\r\n" +
+                "Date: " + new Date() + "\r\n" +
+                "Server: JZAS Server\r\n" +
+                "Last-Modified: " + lastModified + "\r\n" +
+                "Content-Type: " + contentType + "\r\n" +
+                "Content-Length: " + responseBody.length() + "\r\n" +
+                "\r\n" +
+                responseBody;
+        // Returns resource or 404 "NOT FOUND"
+        return response;
+    }
+
+    public String handlePost() {
+
+        // Returns success only on
+        return "";
     }
 }
