@@ -40,6 +40,15 @@ public class RequestHandler {
         }
     }
 
+    public String getResponse() {
+        if (this.getMethod().equals("GET")) {
+            return this.handleGet();
+        } else if (this.getMethod().equals("POST")) {
+            return this.handlePost();
+        }
+        return "";
+    }
+
     public String getMethod() {
         return this.headerFields.get("METHOD");
     }

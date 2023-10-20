@@ -36,14 +36,10 @@ public final class App {
                     line = in.readLine();
                 }
                 RequestHandler handler = new RequestHandler(header);
+                String responseString = handler.getResponse();
+                System.out.println(responseString);
+                out.write(responseString.getBytes());
 
-
-                out.write(("HTTP/1.1 200 OK\r\n").getBytes());
-                // out.write(("Date: "));
-                String str = "penis";
-                out.write(("Content-Length: " + str.getBytes().length + "\r\n").getBytes());
-                out.write("\r\n".getBytes());
-                out.write(str.getBytes());
                 in.close();
             }
         } catch (IOException e) {
