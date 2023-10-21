@@ -10,6 +10,7 @@ import java.net.SocketException;
  */
 public final class App {
     private int port;
+    private static ConfigurationHandler configurationHandler = null;
 
     public App(int port) {
         this.port = port;
@@ -41,9 +42,25 @@ public final class App {
         }
     }
 
+    public static void parseArgs(String[] args) {
+        if (args.length > 0) {
+            if (args[0].equals("-config") && args.length > 1){
+                configurationHandler = new ConfigurationHandler(args[1]);
+                configurationHandler.parseConfigFile();
+                System.out.println(configurationHandler.getPort());
+                System.out.println(configurationHandler.getVirtualHosts().size());
+                System.out.println(configurationHandler.getVirtualHosts().get(0)[0]);
+                System.out.println(configurationHandler.getVirtualHosts().get(0)[1]);
+                System.out.println(configurationHandler.getVirtualHosts().get(0)[2]);
+            }
+        }
+    }
+
     public static void main(String[] args) throws IOException{
-        App server = new App(8080);
-        server.start();
+        parseArgs(args);
+        // ConfigurationHandler configurationHandler = new ConfigurationHandler();
+        // App server = new App(8080);
+        // server.start();
     }
 }
 
