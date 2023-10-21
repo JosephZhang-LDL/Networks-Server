@@ -9,11 +9,12 @@ public class RequestHandler {
 
     // Initiate a hash table to store the header fields
 
-    private Hashtable<String, String> headerFields = new Hashtable<String, String>();
+    private Hashtable<String, String> fields = new Hashtable<String, String>();
 
     public RequestHandler(String request) {
-        // Reach each header field line into a hash table
         String[] sections = request.split("\r\n\r\n");
+        
+        // Read each header field line into a hash table
         String[] headerLines = sections[0].split("\r\n");
         
         // Initial parsing of data
@@ -23,32 +24,30 @@ public class RequestHandler {
             // If it's the method header
             if (lineSplit.length < 2) {
                 lineSplit = line.split(" ");
-                this.headerFields.put("Method", lineSplit[0]);
-                this.headerFields.put("Path", lineSplit[1]);
-                this.headerFields.put("Version", lineSplit[2]);
+                this.fields.put("Method", lineSplit[0]);
+                this.fields.put("Path", lineSplit[1]);
+                this.fields.put("Version", lineSplit[2]);
             }
             // Otherwise use header's field name
             else {
-                this.headerFields.put(lineSplit[0], lineSplit[1]);
+                this.fields.put(lineSplit[0], lineSplit[1]);
             }
         }
 
+        // Read body into hash table
         if (sections.length > 1) {
-            this.headerFields.put("Body", sections[1]);
+            this.fields.put("Body", sections[1]);
         }
-        
-
-        // Parse Individual elements
-        // if accept header
 
         // Print out the hash table
-        for (String key : this.headerFields.keySet()) {
-            System.out.println(key + ": " + this.headerFields.get(key));
+        for (String key : this.fields.keySet()) {
+            System.out.println(key + ": " + this.fields.get(key));
         }
+        System.out.println();
     }
 
     public String getMethod() {
-        return this.headerFields.get("Method");
+        return this.fields.get("Method");
     }
 
     public String getResponse() {
@@ -65,22 +64,29 @@ public class RequestHandler {
         
         // Parse: Accept, If-Modified-Since, Authorization
         try {
-            if (this.headerFields.get("Accept") != null) {
-                String[] acceptTypes = this.headerFields.get("Accept").split(",");
+            if (this.fields.get("Accept") != null) {
+                String[] acceptTypes = this.fields.get("Accept").split(",");
             }
-            if (this.headerFields.get("If-Modified-Since") != null) {
+            if (this.fields.get("If-Modified-Since") != null) {
                 SimpleDateFormat dateFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");
-                Date ifModifiedSince = dateFormat.parse(this.headerFields.get("If-Modified-Since"));
+                Date ifModifiedSince = dateFormat.parse(this.fields.get("If-Modified-Since"));
             }
-            if (this.headerFields.get("Authorization") != null) {
+            if (this.fields.get("Authorization") != null) {
                 String[] auth = this.handleAuthorization();
             }
         } catch (Exception e) {
             System.out.println("Error parsing header fields");
         }
 
-        // Retrieve the file using a trie
-        
+        // Construct the file path and match against Config
+        String filePath = this.fields.get("Path");
+        if (filePath.contains("..")) {
+            System.out.println("Error: Invalid file path");
+            return "HTTP/1.1 400 Bad Request\r\n" +
+                "Date: " + new Date() + "\r\n" +
+                "Server: JZAS Server\r\n" +
+                "\r\n\r\n";
+        }
 
         // On Success
         String responseBody = "This is the response body.";
@@ -94,10 +100,7 @@ public class RequestHandler {
                 "Content-Length: " + responseBody.length() + "\r\n" +
                 "\r\n" +
                 responseBody;
-
-
-        // Returns resource or 404 "NOT FOUND"
-        System.out.println(response);
+        
         return response;
     }
 
