@@ -42,8 +42,21 @@ public class RequestHandler {
         }
     }
 
+    public String getResponse() {
+        if (this.getMethod().equals("GET")) {
+            return this.handleGet();
+        } else if (this.getMethod().equals("POST")) {
+            return this.handlePost();
+        }
+        return this.failedResponse();
+    }
+
     public String getMethod() {
         return this.headerFields.get("METHOD");
+    }
+
+    public String failedResponse() {
+        return "HTTP/1.1 405 Method not supported \r\n";
     }
 
     public String handleGet() {
