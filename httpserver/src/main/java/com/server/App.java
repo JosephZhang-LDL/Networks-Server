@@ -9,18 +9,25 @@ import java.net.SocketException;
  * Hello world!
  */
 public final class App {
-    private int port;
+    private int port = -1;
     private static ConfigurationHandler configurationHandler = null;
 
-    public App(int port) {
-        this.port = port;
+    public App() {
+
     }
 
     public void start() throws IOException {
         ServerSocket serverSocket;
         Socket clientSocket;
+
+        assert configurationHandler != null;
+        port = configurationHandler.getPort();
+        assert port > 0;
+
         serverSocket = new ServerSocket(port);
         System.out.println("Listening for connection on port " + Integer.toString(port) + "...");
+
+        Locations locations = new Locations(configurationHandler.getVirtualHosts());
 
         ControlThreadHandler controlThreadHandler = new ControlThreadHandler(serverSocket);
         Thread controlThread = new Thread(controlThreadHandler);
@@ -47,20 +54,15 @@ public final class App {
             if (args[0].equals("-config") && args.length > 1){
                 configurationHandler = new ConfigurationHandler(args[1]);
                 configurationHandler.parseConfigFile();
-                System.out.println(configurationHandler.getPort());
-                System.out.println(configurationHandler.getVirtualHosts().size());
-                System.out.println(configurationHandler.getVirtualHosts().get(0)[0]);
-                System.out.println(configurationHandler.getVirtualHosts().get(0)[1]);
-                System.out.println(configurationHandler.getVirtualHosts().get(0)[2]);
             }
         }
     }
 
     public static void main(String[] args) throws IOException{
         parseArgs(args);
-        // ConfigurationHandler configurationHandler = new ConfigurationHandler();
-        // App server = new App(8080);
-        // server.start();
+
+        App server = new App();
+        server.start();
     }
 }
 
