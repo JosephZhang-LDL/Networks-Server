@@ -45,9 +45,9 @@ public class SocketHandler implements Runnable {
                 byte[] rawHeader = buffer.toByteArray();
                 String header = new String(rawHeader, "UTF-8");
                 RequestHandler handler = new RequestHandler(header, locations);
-                String responseString = handler.getResponse();
-                System.out.println(responseString);
-                out.write(responseString.getBytes());
+                byte[] responseString = handler.getResponse();
+                // System.out.println(responseString);
+                out.write(responseString);
             } else {
                 out.write(this.errorResponse(new Exception("Incomplete header")).getBytes());
             }

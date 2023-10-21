@@ -1,12 +1,17 @@
 package com.server;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Hashtable;
+import java.awt.image.BufferedImage;
+
+import javax.imageio.ImageIO;
 
 public class RequestHandler {
     // Class that takes in an http header and splits it up by carriage return lines
@@ -57,18 +62,23 @@ public class RequestHandler {
         return this.fields.get("Method");
     }
 
-    public String getResponse() {
+    public byte[] getResponse() {
         if (this.getMethod().equals("GET")) {
             return this.handleGet();
         } else if (this.getMethod().equals("POST")) {
             return this.handlePost();
         }
-        return "";
+        return "".getBytes();
     }
 
-    public String handleGet() {
+    public byte[] constructErrorResponse(int errorCode, String description) {
+         return ("HTTP/1.1 " + errorCode + " " + description + "\r\n" +
+                        "Date: " + new Date() + "\r\n" +
+                        "Server: JZAS Server\r\n" +
+                        "\r\n\r\n").getBytes();
+    }
 
-
+    public byte[] handleGet() {
         // Parse: Accept, If-Modified-Since, Authorization
         try {
             if (this.fields.get("Accept") != null) {
@@ -93,6 +103,7 @@ public class RequestHandler {
         // Construct the file path and match against Config
         Boolean found = false;
         String filePath = hostPath + this.fields.get("Path");
+
         // if empty path
         if (filePath.charAt(filePath.length() - 1) == '/') {
             // check for mobile
@@ -110,59 +121,102 @@ public class RequestHandler {
                     filePath = filePath + "index.html";
                 }
                 else {
-                    return "HTTP/1.1 404 Not Found\r\n" +
-                        "Date: " + new Date() + "\r\n" +
-                        "Server: JZAS Server\r\n" +
-                        "\r\n\r\n";
+                    return constructErrorResponse(404, "Not Found");
                 }
             }
-
         }
 
+        // if path tries to go out of bounds
         if (filePath.contains("..")) {
             System.out.println("Error: Invalid file path");
-            return "HTTP/1.1 400 Bad Request\r\n" +
-                "Date: " + new Date() + "\r\n" +
-                "Server: JZAS Server\r\n" +
-                "\r\n\r\n";
+            return constructErrorResponse(400, "Bad Request");
         }
 
+        File f = new File(filePath);
         String responseBody = "";
-        try {
-            BufferedReader in = new BufferedReader(new FileReader(filePath));
+        String contentType = "";
+        String responseLength = "";
+        Date lastModified = new Date();
+        // do file execution
+        if (f.canExecute()) {
+            System.out.println("what the fucks");
+        }
+        else if (f.exists()) {
+            try {
+                String[] fileParts = filePath.split("\\.");
+                String extension = fileParts[fileParts.length - 1];
+                if (extension.matches("jpg|jpeg|png")) {
+                    contentType = "image/" + extension;
 
-            String line;
-            while ((line = in.readLine()) != null) {
-                responseBody += line + "\r\n";
+                    BufferedImage image = ImageIO.read(new FileInputStream(f));
+                    System.out.println(filePath);
+                    System.out.println(image == null);
+                    System.out.println(f.exists());
+
+                    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+                    ImageIO.write(image, extension, byteArrayOutputStream);
+                    byte[] imageReturn = byteArrayOutputStream.toByteArray();
+                    responseLength = String.valueOf(imageReturn.length);
+
+                    byte[] headers = ("HTTP/1.1 200 OK\r\n" +
+                        "Date: " + new Date() + "\r\n" +
+                        "Server: JZAS Server\r\n" +
+                        "Last-Modified: " + lastModified + "\r\n" +
+                        "Content-Type: " + contentType + "\r\n" +
+                        "Content-Length: " + responseLength + "\r\n" +
+                        "\r\n").getBytes();
+                    return headers;
+                    // byte[] returnArray = Arrays.copyOf(headers, headers.length + imageReturn.length);
+                    // for (int i = 0; i < imageReturn.length; i++){
+                    //     returnArray[i + headers.length] = imageReturn[i];
+                    // }
+                    // return returnArray;
+                }
+                else if (extension.matches("html|txt")) {
+                    if (extension.equals("html")) {
+                        contentType = "text/html";
+                    } else {
+                        contentType = "text/plain";
+                    }
+
+                    BufferedReader in = new BufferedReader(new FileReader(filePath));
+                    String line;
+                    while ((line = in.readLine()) != null) {
+                        responseBody += line + "\r\n";
+                    }
+                    in.close();
+                    responseLength = String.valueOf(responseBody.length());
+
+                    return ("HTTP/1.1 200 OK\r\n" +
+                        "Date: " + new Date() + "\r\n" +
+                        "Server: JZAS Server\r\n" +
+                        "Last-Modified: " + lastModified + "\r\n" +
+                        "Content-Type: " + contentType + "\r\n" +
+                        "Content-Length: " + responseLength + "\r\n" +
+                        "\r\n" +
+                        responseBody).getBytes();
+                }
+                else {
+                    return constructErrorResponse(404, "Unable to read the file");
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+                return constructErrorResponse(404, "Not Found");
             }
-            in.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-            return "HTTP/1.1 404 Not Found\r\n" +
-                "Date: " + new Date() + "\r\n" +
-                "Server: JZAS Server\r\n" +
-                "\r\n\r\n";
+
+        }
+        else {
+            return constructErrorResponse(404, "Not Found");
         }
 
-        // On Success
-        Date lastModified = new Date();
-        String contentType = "text/plain";
-        String response = "HTTP/1.1 200 OK\r\n" +
-                "Date: " + new Date() + "\r\n" +
-                "Server: JZAS Server\r\n" +
-                "Last-Modified: " + lastModified + "\r\n" +
-                "Content-Type: " + contentType + "\r\n" +
-                "Content-Length: " + responseBody.length() + "\r\n" +
-                "\r\n" +
-                responseBody;
 
-        return response;
+        return "".getBytes();
     }
 
-    public String handlePost() {
+    public byte[] handlePost() {
 
         // Returns success only on
-        return "";
+        return "".getBytes();
     }
 
     private String[] handleAuthorization() {
