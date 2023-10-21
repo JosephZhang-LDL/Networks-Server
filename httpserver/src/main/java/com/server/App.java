@@ -41,7 +41,7 @@ public final class App {
         try {
             while ((clientSocket = serverSocket.accept()) != null) {
                 System.out.println("Received connection from " + clientSocket.getRemoteSocketAddress().toString());
-                SocketHandler handler = new SocketHandler(clientSocket);
+                SocketHandler handler = new SocketHandler(clientSocket, locations);
                 Thread t = new Thread(handler);
                 t.start();
             }

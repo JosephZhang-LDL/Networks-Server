@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 
 public class ConfigurationHandler {
-    private String fileString;
+    private String filePath;
     BufferedReader in = null;
     private int port = -1;
     private String mainServerName = "";
@@ -31,10 +31,10 @@ public class ConfigurationHandler {
 
     public void parseConfigFile() {
         try {
-            in = new BufferedReader(new FileReader(fileString));
+            in = new BufferedReader(new FileReader(filePath));
 
             String line;
-            while((line = in.readLine()) != null){
+            while ((line = in.readLine()) != null) {
                 String[] words = line.split(" ");
                 if (words.length == 0) {
                     continue;
@@ -67,25 +67,26 @@ public class ConfigurationHandler {
                         words = line.split(" ");
                         if (words[0].equals("DocumentRoot")) {
                             assert currHost[1] == null;
-                            currHost[1] = words[1];
+                            currHost[1] = words[1].replace("\"", "");
                         }
                         else if (words[0].equals("ServerName")){
                             assert currHost[1] != null;
                             assert currHost[2] == null;
-                            currHost[2] = words[1];
+                            currHost[2] = words[1].replace("\"", "");
                         }
                     }
                 }
             }
+            in.close();
         } catch (IOException e) {
             // do nothing
-            System.out.println("File IO Error with " + fileString);
+            System.out.println("File IO Error with " + filePath);
             e.printStackTrace();
         }
     }
 
-    public ConfigurationHandler(String fileString) {
-        this.fileString = fileString;
+    public ConfigurationHandler(String filePath) {
+        this.filePath = filePath;
     }
 
 }

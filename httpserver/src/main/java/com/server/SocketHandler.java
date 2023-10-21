@@ -8,9 +8,11 @@ import java.net.Socket;
 
 public class SocketHandler implements Runnable {
     private Socket clientSocket;
+    private Locations locations;
 
-    public SocketHandler(Socket socket) {
+    public SocketHandler(Socket socket, Locations locations) {
         this.clientSocket = socket;
+        this.locations = locations;
     }
 
     public String errorResponse(Exception e) {
@@ -42,7 +44,7 @@ public class SocketHandler implements Runnable {
             if (headerComplete) {
                 byte[] rawHeader = buffer.toByteArray();
                 String header = new String(rawHeader, "UTF-8");
-                RequestHandler handler = new RequestHandler(header);
+                RequestHandler handler = new RequestHandler(header, locations);
                 String responseString = handler.getResponse();
                 System.out.println(responseString);
                 out.write(responseString.getBytes());
