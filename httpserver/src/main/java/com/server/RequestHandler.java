@@ -1,7 +1,5 @@
 package com.server;
 
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Hashtable;
 
@@ -42,35 +40,32 @@ public class RequestHandler {
         }
     }
 
+    public String getMethod() {
+        return this.headerFields.get("Method");
+    }
+
     public String getResponse() {
         if (this.getMethod().equals("GET")) {
             return this.handleGet();
         } else if (this.getMethod().equals("POST")) {
             return this.handlePost();
         }
-        return this.failedResponse();
-    }
-
-    public String getMethod() {
-        return this.headerFields.get("METHOD");
-    }
-
-    public String failedResponse() {
-        return "HTTP/1.1 405 Method not supported \r\n";
+        return "";
     }
 
     public String handleGet() {
 
+        
         // Parse: Accept, If-Modified-Since, Authorization
         String[] acceptTypes = this.headerFields.get("Accept").split(",");
-        try {
+        /* try {
             SimpleDateFormat dateFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");
             Date ifModifiedSince = dateFormat.parse(this.headerFields.get("If-Modified-Since"));
         } catch (ParseException e) {
             e.printStackTrace();
         }
-        String[] auth = this.handleAuthorization();
-
+        String[] auth = this.handleAuthorization(); */
+        
 
         // On Success
         String responseBody = "This is the response body.";
@@ -87,6 +82,7 @@ public class RequestHandler {
 
 
         // Returns resource or 404 "NOT FOUND"
+        System.out.println(response);
         return response;
     }
 
