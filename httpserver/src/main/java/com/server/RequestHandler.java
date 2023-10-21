@@ -1,5 +1,7 @@
 package com.server;
 
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Hashtable;
 
@@ -21,9 +23,9 @@ public class RequestHandler {
             // If it's the method header
             if (lineSplit.length < 2) {
                 lineSplit = line.split(" ");
-                this.headerFields.put("METHOD", lineSplit[0]);
-                this.headerFields.put("PATH", lineSplit[1]);
-                this.headerFields.put("VERSION", lineSplit[2]);
+                this.headerFields.put("Method", lineSplit[0]);
+                this.headerFields.put("Path", lineSplit[1]);
+                this.headerFields.put("Version", lineSplit[2]);
             }
             // Otherwise use header's field name
             else {
@@ -46,7 +48,16 @@ public class RequestHandler {
 
     public String handleGet() {
 
-        // Parse the following fields to choose content: Accept, If-Modified-Since, Authorization
+        // Parse: Accept, If-Modified-Since, Authorization
+        String[] acceptTypes = this.headerFields.get("Accept").split(",");
+        try {
+            SimpleDateFormat dateFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");
+            Date ifModifiedSince = dateFormat.parse(this.headerFields.get("If-Modified-Since"));
+        } catch (ParseException e) {
+            e.printStackTrace();
+        }
+        String[] auth = this.handleAuthorization();
+
 
         // On Success
         String responseBody = "This is the response body.";
@@ -60,6 +71,8 @@ public class RequestHandler {
                 "Content-Length: " + responseBody.length() + "\r\n" +
                 "\r\n" +
                 responseBody;
+
+
         // Returns resource or 404 "NOT FOUND"
         return response;
     }
@@ -68,5 +81,11 @@ public class RequestHandler {
 
         // Returns success only on
         return "";
+    }
+
+    private String[] handleAuthorization() {
+        // Parse the authorization header
+
+        return new String[]{"", ""};
     }
 }
