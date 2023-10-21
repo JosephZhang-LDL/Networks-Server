@@ -1,5 +1,6 @@
 package com.server;
 
+import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Hashtable;
 
@@ -10,10 +11,11 @@ public class RequestHandler {
 
     private Hashtable<String, String> headerFields = new Hashtable<String, String>();
 
-    public RequestHandler(String header) {
+    public RequestHandler(String request) {
         // Reach each header field line into a hash table
-        String[] headerLines = header.split("\r\n");
-
+        String[] sections = request.split("\r\n\r\n");
+        String[] headerLines = sections[0].split("\r\n");
+        
         // Initial parsing of data
         for (int i = 0; i < headerLines.length; i++) {
             String line = headerLines[i];
@@ -30,6 +32,11 @@ public class RequestHandler {
                 this.headerFields.put(lineSplit[0], lineSplit[1]);
             }
         }
+
+        if (sections.length > 1) {
+            this.headerFields.put("Body", sections[1]);
+        }
+        
 
         // Parse Individual elements
         // if accept header
@@ -57,14 +64,22 @@ public class RequestHandler {
 
         
         // Parse: Accept, If-Modified-Since, Authorization
-        String[] acceptTypes = this.headerFields.get("Accept").split(",");
-        /* try {
-            SimpleDateFormat dateFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");
-            Date ifModifiedSince = dateFormat.parse(this.headerFields.get("If-Modified-Since"));
-        } catch (ParseException e) {
-            e.printStackTrace();
+        try {
+            if (this.headerFields.get("Accept") != null) {
+                String[] acceptTypes = this.headerFields.get("Accept").split(",");
+            }
+            if (this.headerFields.get("If-Modified-Since") != null) {
+                SimpleDateFormat dateFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");
+                Date ifModifiedSince = dateFormat.parse(this.headerFields.get("If-Modified-Since"));
+            }
+            if (this.headerFields.get("Authorization") != null) {
+                String[] auth = this.handleAuthorization();
+            }
+        } catch (Exception e) {
+            System.out.println("Error parsing header fields");
         }
-        String[] auth = this.handleAuthorization(); */
+
+        // Retrieve the file using a trie
         
 
         // On Success
