@@ -44,7 +44,7 @@ public class ConfigurationHandler {
                         this.port = Integer.parseInt(words[1]);
                     }
                     catch (NumberFormatException e){
-                        // do nothing
+                        // do nothing i.e. port will remain negative
                     }
                 }
                 else if (words[0].equals("ServerName")) {
@@ -57,6 +57,8 @@ public class ConfigurationHandler {
                     this.virtualHosts.add(new String[3]);
                     String[] currHost = this.virtualHosts.get(virtualHosts.size()-1);
                     currHost[0] = words[1].replace(">", "");
+
+                    // format: [url, documentroot, servername]
                     while((line = in.readLine()) != null) {
                         line = line.trim();
                         if (line.equals("</VirtualHost>")) {

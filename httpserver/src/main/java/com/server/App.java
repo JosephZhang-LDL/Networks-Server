@@ -12,6 +12,7 @@ public final class App {
     private int port = -1;
     private static ConfigurationHandler configurationHandler = null;
 
+    // empty constructor
     public App() {
 
     }
@@ -20,15 +21,19 @@ public final class App {
         ServerSocket serverSocket;
         Socket clientSocket;
 
+        // sanity check: configuration handler should be fully populated
         assert configurationHandler != null;
         port = configurationHandler.getPort();
         assert port > 0;
 
+        // set up server
         serverSocket = new ServerSocket(port);
         System.out.println("Listening for connection on port " + Integer.toString(port) + "...");
 
+        // set up virtual host locations
         Locations locations = new Locations(configurationHandler.getVirtualHosts());
 
+        // master control thread: will throw SocketException
         ControlThreadHandler controlThreadHandler = new ControlThreadHandler(serverSocket);
         Thread controlThread = new Thread(controlThreadHandler);
         controlThread.start();
