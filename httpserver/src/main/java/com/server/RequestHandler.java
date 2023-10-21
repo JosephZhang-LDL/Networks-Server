@@ -1,5 +1,6 @@
 package com.server;
 
+import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -9,7 +10,6 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Hashtable;
-import java.awt.image.BufferedImage;
 
 import javax.imageio.ImageIO;
 
@@ -103,6 +103,8 @@ public class RequestHandler {
         // Construct the file path and match against Config
         Boolean found = false;
         String filePath = hostPath + this.fields.get("Path");
+
+        System.out.println(filePath);
 
         // if empty path
         if (filePath.charAt(filePath.length() - 1) == '/') {

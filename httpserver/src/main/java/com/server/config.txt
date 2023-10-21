@@ -1,13 +1,11 @@
 Listen 8080
 
 <VirtualHost *:80>
-    DocumentRoot "/Users/alexshi/Documents/Yale/F23/CPSC434/Networks-Server/httpserver/src/main/java/com/server"
+    DocumentRoot "SampleSite"
     ServerName www.example.com
-
 </VirtualHost>
 
 <VirtualHost *:80>
     DocumentRoot "/www/example2"
     ServerName www.example.org
-
 </VirtualHost>

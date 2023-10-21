@@ -3,10 +3,9 @@ Java HTTP Server for CPSC 434/534
 
 # How to Run
 Navigate to the right directory. Assuming you're in ```/Networks-Server```:
+
+Run
 ```
-cd httpserver/target/classes
+source activate.sh
 ```
-and run
-```
-java com.server.App
-```
+to activate the server. Some of the current configurations use relative pathing from the `/Networks-Server` folder.

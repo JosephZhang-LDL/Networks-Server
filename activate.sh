@@ -1,0 +1,1 @@
+java -cp httpserver/target/classes/ com.server.App -config httpserver/src/main/java/com/server/config.txt
