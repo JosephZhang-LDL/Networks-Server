@@ -1,8 +1,8 @@
 package com.server;
 
-import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 
@@ -18,22 +18,37 @@ public class SocketHandler implements Runnable {
     }
 
     public void run() {
-        BufferedReader in = null;
+        InputStream in = null;
         OutputStream out = null;
 
         try {
-            in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-            out = this.clientSocket.getOutputStream();
-            String header = "";
-            String line = in.readLine();
-            while(!line.isEmpty()) {
-                header = header + line + "\r\n";
-                line = in.readLine();
+            in = clientSocket.getInputStream();
+            out = clientSocket.getOutputStream();
+
+            // Write input stream into a byte buffer array
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            byte[] byteBuffer = new byte[1024];
+            int bytesRead;
+            boolean headerComplete = false;
+            while ((bytesRead = in.read(byteBuffer)) != -1) {
+                buffer.write(byteBuffer, 0, bytesRead);
+                if (containsEndOfHeader(buffer.toByteArray())) {
+                    headerComplete = true;
+                    break;
+                }
             }
-            RequestHandler handler = new RequestHandler(header);
-            // We should add: if unable to parse, we should return
-            String responseString = handler.getResponse();
-            out.write(responseString.getBytes());
+
+            // If header is complete, parse it and send a response
+            if (headerComplete) {
+                byte[] rawHeader = buffer.toByteArray();
+                String header = new String(rawHeader, "UTF-8");
+                RequestHandler handler = new RequestHandler(header);
+                String responseString = handler.getResponse();
+                out.write(responseString.getBytes());
+            } else {
+                out.write(this.errorResponse(new Exception("Incomplete header")).getBytes());
+            }
+
         } catch (IOException e) {
             try {
                 e.printStackTrace();
@@ -60,5 +75,26 @@ public class SocketHandler implements Runnable {
                 e.printStackTrace();
             }
         }
+    }
+
+    private boolean containsEndOfHeader(byte[] data) {
+        byte[] CRLFCRLF = {0x0D, 0x0A, 0x0D, 0x0A}; // represents '\r\n\r\n'
+        byte[] LFLF = {0x0A, 0x0A}; // represents '\n\n'
+
+        return containsBytes(data, CRLFCRLF) || containsBytes(data, LFLF);
+    }
+
+    private boolean containsBytes(byte[] array, byte[] target) {
+        for (int i = 0; i < array.length - target.length + 1; i++) {
+            boolean found = true;
+            for (int j = 0; j < target.length; j++) {
+                if (array[i + j] != target[j]) {
+                    found = false;
+                    break;
+                }
+            }
+            if (found) return true;
+        }
+        return false;
     }
 }
