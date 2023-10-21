@@ -2,50 +2,47 @@ package com.server;
 
 import java.net.*;
 
-import org.omg.CORBA.Request;
-
 import java.io.*;
 
 /**
  * Hello world!
  */
 public final class App {
-    private App() {
+    private int port;
+
+    public App(int port) {
+        this.port = port;
     }
 
-
-    public static void main(String[] args) {
+    public void start() throws IOException {
         ServerSocket serverSocket;
         Socket clientSocket;
-        BufferedReader in;
-        OutputStream out;
-        int port = 8080;
+        serverSocket = new ServerSocket(port);
+        System.out.println("Listening for connection on port " + Integer.toString(port) + "...");
+
+        ControlThreadHandler controlThreadHandler = new ControlThreadHandler(serverSocket);
+        Thread controlThread = new Thread(controlThreadHandler);
+        controlThread.start();
 
         try {
-            serverSocket = new ServerSocket(port);
-            System.out.println("Listening for connection on port " + Integer.toString(port) + "...");
-            while (true) {
-                clientSocket = serverSocket.accept();
-                in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                out = clientSocket.getOutputStream();
-                String header = "";
-                String line = in.readLine();
-                while(!line.isEmpty()) {
-                    header = header + line + "\r\n";
-                    // clientSocket.getOutputStream().write(line.getBytes("UTF-8"));
-                    line = in.readLine();
-                }
-                RequestHandler handler = new RequestHandler(header);
-                String responseString = handler.getResponse();
-                System.out.println(responseString);
-                out.write(responseString.getBytes());
-
-                in.close();
+            while ((clientSocket = serverSocket.accept()) != null) {
+                System.out.println("Received connection from " + clientSocket.getRemoteSocketAddress().toString());
+                SocketHandler handler = new SocketHandler(clientSocket);
+                Thread t = new Thread(handler);
+                t.start();
             }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        } catch (SocketException e) {
+            System.out.println("Shutting Down");
+        } finally {
+            if (serverSocket != null) {
+                serverSocket.close();
+            }
         }
+    }
 
+    public static void main(String[] args) throws IOException{
+        App server = new App(8080);
+        server.start();
     }
 }
 
@@ -59,3 +56,15 @@ public final class App {
 //         "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==\r\n" +
 //         "Content-Length: 13\r\n" +
 //         "Content-Type: application/x-www-form-urlencoded\r\n";
+
+
+
+        // testing whether or not running threads would terminate before they finish
+        /*
+        TestShutdownHandler testThreadShutdownHandler = new TestShutdownHandler();
+        Thread testShutdown= new Thread(testThreadShutdownHandler);
+        testShutdown.start();
+
+        System.out.println(testShutdown.isAlive());
+
+        */
