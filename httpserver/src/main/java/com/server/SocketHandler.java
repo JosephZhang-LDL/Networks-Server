@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 
 public class SocketHandler implements Runnable {
     private Socket clientSocket;
@@ -26,6 +27,7 @@ public class SocketHandler implements Runnable {
         OutputStream out = null;
 
         try {
+            clientSocket.setSoTimeout(3000);
             in = clientSocket.getInputStream();
             out = clientSocket.getOutputStream();
 
@@ -54,14 +56,20 @@ public class SocketHandler implements Runnable {
                 out.write(this.errorResponse(new Exception("Incomplete header")).getBytes());
             }
 
+        } catch (SocketTimeoutException ste) {
+            System.out.println("Connection timed out, closing socket.");
+            try {
+                clientSocket.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         } catch (IOException e) {
             try {
                 e.printStackTrace();
                 if (out != null) {
                     out.write(this.errorResponse(e).getBytes());
                 }
-            }
-            catch (IOException e2) {
+            } catch (IOException e2) {
                 e.printStackTrace();
                 throw new RuntimeException(e2);
             }
@@ -75,16 +83,15 @@ public class SocketHandler implements Runnable {
                 }
                 this.clientSocket.close();
                 return;
-            }
-            catch (IOException e) {
+            } catch (IOException e) {
                 e.printStackTrace();
             }
         }
     }
 
     private boolean containsEndOfHeader(byte[] data) {
-        byte[] CRLFCRLF = {0x0D, 0x0A, 0x0D, 0x0A}; // represents '\r\n\r\n'
-        byte[] LFLF = {0x0A, 0x0A}; // represents '\n\n'
+        byte[] CRLFCRLF = { 0x0D, 0x0A, 0x0D, 0x0A }; // represents '\r\n\r\n'
+        byte[] LFLF = { 0x0A, 0x0A }; // represents '\n\n'
 
         return containsBytes(data, CRLFCRLF) || containsBytes(data, LFLF);
     }
@@ -98,7 +105,8 @@ public class SocketHandler implements Runnable {
                     break;
                 }
             }
-            if (found) return true;
+            if (found)
+                return true;
         }
         return false;
     }
