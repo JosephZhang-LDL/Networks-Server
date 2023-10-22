@@ -75,6 +75,7 @@ public class RequestHandler {
         return "".getBytes();
     }
 
+    // Normal Error Response
     public byte[] constructErrorResponse(int errorCode, String description) {
         return ("HTTP/1.1 " + errorCode + " " + description + "\r\n" +
                 "Date: " + new Date() + "\r\n" +
@@ -82,6 +83,7 @@ public class RequestHandler {
                 "\r\n\r\n").getBytes();
     }
 
+    // Error Response with children
     public byte[] constructErrorResponse(int errorCode, String description, String children) {
         return ("HTTP/1.1 " + errorCode + " " + description + "\r\n" +
                 "Date: " + new Date() + "\r\n" +
