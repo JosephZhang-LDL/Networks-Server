@@ -20,7 +20,7 @@ public class Locations {
             return virtualHosts.get(serverName);
         }
         else {
-            return "";
+            return this.getDefaultLocation();
         }
     }
 
