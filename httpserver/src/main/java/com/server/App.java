@@ -33,6 +33,9 @@ public final class App {
         // set up virtual host locations
         Locations locations = new Locations(configurationHandler.getVirtualHosts());
 
+        // Set up authorization cache
+        AuthorizationCache authorizationCache = new AuthorizationCache();
+
         // master control thread: will throw SocketException
         ControlThreadHandler controlThreadHandler = new ControlThreadHandler(serverSocket);
         Thread controlThread = new Thread(controlThreadHandler);
@@ -41,7 +44,7 @@ public final class App {
         try {
             while ((clientSocket = serverSocket.accept()) != null) {
                 System.out.println("Received connection from " + clientSocket.getRemoteSocketAddress().toString());
-                SocketHandler handler = new SocketHandler(clientSocket, locations);
+                SocketHandler handler = new SocketHandler(clientSocket, locations, authorizationCache);
                 Thread t = new Thread(handler);
                 t.start();
             }

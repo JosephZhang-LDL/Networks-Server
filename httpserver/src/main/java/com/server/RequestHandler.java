@@ -8,6 +8,8 @@ import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.Date;
 import java.util.Hashtable;
 
@@ -19,9 +21,11 @@ public class RequestHandler {
     // Initiate a hash table to store the header fields
 
     private Hashtable<String, String> fields = new Hashtable<String, String>();
+    private AuthorizationCache authCache = new AuthorizationCache();
     private Locations locations = null;
 
-    public RequestHandler(String request, Locations locations) {
+    public RequestHandler(String request, Locations locations, AuthorizationCache authCache) {
+        this.authCache = authCache;
         this.locations = locations;
 
         String[] sections = request.split("\r\n\r\n");
@@ -78,16 +82,15 @@ public class RequestHandler {
                 "\r\n\r\n").getBytes();
     }
 
-    public byte[] handleGet() {
-        // Parse: Accept, If-Modified-Since, Authorization
-        try {
-            if (this.fields.get("Authorization") != null) {
-                String[] auth = this.handleAuthorization();
-            }
-        } catch (Exception e) {
-            System.out.println("Error parsing header fields");
-        }
+    public byte[] constructErrorResponse(int errorCode, String description, String children) {
+        return ("HTTP/1.1 " + errorCode + " " + description + "\r\n" +
+                "Date: " + new Date() + "\r\n" +
+                "Server: JZAS Server\r\n" +
+                children + "\r\n" +
+                "\r\n\r\n").getBytes();
+    }
 
+    public byte[] handleGet() {
         String hostPath = this.locations.getDefaultLocation();
         if (this.fields.get("Host") != null) {
             hostPath = this.locations.getLocation(this.fields.get("Host"));
@@ -168,6 +171,14 @@ public class RequestHandler {
                     }
                 }
 
+                // CHECK 3: AUTHORIZATION CHECK
+                String authResults = this.handleAuthorization(filePath.split("/"));
+
+                if (!authResults.equals("1")) {
+                    return constructErrorResponse(401, "Unauthorized",
+                            "WWW-Authenticate: Basic realm=\"" + authResults + "\"");
+                }
+
                 // HANDLING IMAGES
                 if (extension.matches("jpg|jpeg|png")) {
                     contentType = "image/" + extension;
@@ -195,7 +206,7 @@ public class RequestHandler {
                     System.arraycopy(imageReturn, 0, combinedResponse, headers.length, imageReturn.length);
 
                     return combinedResponse;
-                } 
+                }
                 // HANDLING TEXT AND HTML
                 else if (extension.matches("html|txt")) {
                     if (extension.equals("html")) {
@@ -239,9 +250,73 @@ public class RequestHandler {
         return "".getBytes();
     }
 
-    private String[] handleAuthorization() {
-        // Parse the authorization header
+    /**
+     * 
+     * @param filepath
+     * @return 1 if authorized, "AuthName" if authorization is needed
+     */
+    private String handleAuthorization(String[] filepath) {
+        // Check the directory for an htaccess file
+        String user = "";
+        String password = "";
+        String authName = "";
 
-        return new String[] { "", "" };
+        String directoryPath = String.join("/", Arrays.copyOfRange(filepath, 0, filepath.length - 1));
+        File htaccess = new File(directoryPath + "/.htaccess");
+        
+        // If no need to authenticate, then return success
+        if (!htaccess.exists()) {
+            return "1";
+        }
+
+        // Check for cached data
+        String[] cachedData = this.authCache.get(directoryPath, new Date(htaccess.lastModified()));
+        if (cachedData != null) {
+            user = cachedData[0];
+            password = cachedData[1];
+            authName = cachedData[2];
+        } else {
+            try {
+                // Read in file contents
+                BufferedReader in = new BufferedReader(new FileReader(htaccess));
+                String line;
+                user = "";
+                password = "";
+                while ((line = in.readLine()) != null) {
+                    String[] lineSplit = line.split(" ", 2);
+                    if (lineSplit[0].equals("AuthName")) {
+                        authName = lineSplit[1];
+                    } else if (lineSplit[0].equals("User")) {
+                        user = lineSplit[1];
+                    } else if (lineSplit[0].equals("Password")) {
+                        password = lineSplit[1];
+                    }
+                }
+                in.close();
+
+                authCache.add(directoryPath, new String[] { user, password, authName }, new Date(htaccess.lastModified()));
+            } catch (IOException e) {
+                e.printStackTrace();
+                return "Forbidden";
+            }
+        }
+
+        // Check for authorization
+        if (this.fields.get("Authorization") == null) {
+            return authName;
+        }
+
+        // Get the credentials
+        String[] auth = this.fields.get("Authorization").split(" ");
+        String[] credentials = new String(Base64.getDecoder().decode(auth[1])).split(":");
+
+        // Check if the credentials match
+        if (auth[0].equals("Basic") &&
+                user.equals(credentials[0]) &&
+                password.equals(credentials[1])) {
+            return "1";
+        }
+        
+        return authName;
     }
 }

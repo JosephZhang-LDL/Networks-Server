@@ -9,10 +9,12 @@ import java.net.Socket;
 public class SocketHandler implements Runnable {
     private Socket clientSocket;
     private Locations locations;
+    private AuthorizationCache authorizationCache;
 
-    public SocketHandler(Socket socket, Locations locations) {
+    public SocketHandler(Socket socket, Locations locations, AuthorizationCache authorizationCache) {
         this.clientSocket = socket;
         this.locations = locations;
+        this.authorizationCache = authorizationCache;
     }
 
     public String errorResponse(Exception e) {
@@ -44,7 +46,7 @@ public class SocketHandler implements Runnable {
             if (headerComplete) {
                 byte[] rawHeader = buffer.toByteArray();
                 String header = new String(rawHeader, "UTF-8");
-                RequestHandler handler = new RequestHandler(header, locations);
+                RequestHandler handler = new RequestHandler(header, locations, authorizationCache);
                 byte[] responseString = handler.getResponse();
                 // System.out.println(responseString);
                 out.write(responseString);
