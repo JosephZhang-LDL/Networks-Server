@@ -36,7 +36,7 @@ public final class App {
         AuthorizationCache authorizationCache = new AuthorizationCache();
 
         // master control thread: will throw SocketException
-        ThreadHandler threadHandler = new ThreadHandler(serverSocket);
+        ControlThreadHandler threadHandler = new ControlThreadHandler(serverSocket);
         Thread controlThread = new Thread(threadHandler);
         controlThread.start();
 
@@ -52,7 +52,6 @@ public final class App {
         } finally {
             if (serverSocket != null) {
                 threadHandler.shutdown();
-                serverSocket.close();
             }
         }
     }
