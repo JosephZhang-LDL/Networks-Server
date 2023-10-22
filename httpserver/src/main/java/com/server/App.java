@@ -36,8 +36,8 @@ public final class App {
         AuthorizationCache authorizationCache = new AuthorizationCache();
 
         // master control thread: will throw SocketException
-        ControlThreadHandler threadHandler = new ControlThreadHandler(serverSocket);
-        Thread controlThread = new Thread(threadHandler);
+        ControlThreadHandler controlThreadHandler = new ControlThreadHandler(serverSocket);
+        Thread controlThread = new Thread(controlThreadHandler);
         controlThread.start();
 
         try {
@@ -45,13 +45,13 @@ public final class App {
                 System.out.println("Received connection from " + clientSocket.getRemoteSocketAddress().toString());
                 SocketHandler handler = new SocketHandler(clientSocket, locations, authorizationCache);
                 // Submit the handler to the thread pool
-                threadHandler.submit(handler);
+                controlThreadHandler.submit(handler);
             }
         } catch (SocketException e) {
             System.out.println("Shutting Down");
         } finally {
             if (serverSocket != null) {
-                threadHandler.shutdown();
+                controlThreadHandler.shutdown();
             }
         }
     }
