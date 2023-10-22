@@ -17,14 +17,15 @@ public class SocketHandler implements Runnable {
         this.locations = locations;
         this.authorizationCache = authorizationCache;
     }
-
+    
     public String errorResponse(Exception e) {
         return "HTTP/1.1 500 " + e.toString() + "\r\n";
     }
-
+    
     public void run() {
         InputStream in = null;
         OutputStream out = null;
+        System.out.println(Thread.currentThread().getName());
 
         try {
             clientSocket.setSoTimeout(3000);
