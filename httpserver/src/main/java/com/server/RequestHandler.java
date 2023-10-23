@@ -31,11 +31,13 @@ public class RequestHandler {
     private AuthorizationCache authCache = new AuthorizationCache();
     private Locations locations = null;
     private Socket clientSocket;
+    private OutputStream out;
 
-    public RequestHandler(String request, Locations locations, AuthorizationCache authCache, Socket clientSocket) {
+    public RequestHandler(String request, Locations locations, AuthorizationCache authCache, Socket clientSocket, OutputStream out) {
         this.authCache = authCache;
         this.locations = locations;
         this.clientSocket = clientSocket;
+        this.out = out;
 
         String[] sections = request.split("\r\n\r\n");
 
@@ -425,7 +427,6 @@ public class RequestHandler {
             env.put("SERVER_PORT", this.fields.get("Host").split(":")[1]);
             env.put("SERVER_PROTOCOL", this.fields.get("Version"));
             env.put("SERVER_SOFTWARE", "Java/" + System.getProperty("java.version"));
-            System.out.println(env.toString());
 
             Process process = pb.start();
             OutputStream stdin = process.getOutputStream();
@@ -435,6 +436,34 @@ public class RequestHandler {
             writer.close();
 
             BufferedReader process_in = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            if (this.fields.get("Transfer-Encoding").equals("chunked")){
+                String proc_line;
+                String content_type = "";
+                while ((proc_line = process_in.readLine()) != null){
+                    if (proc_line.split(":")[0].equals("Content-Type")) {
+                        content_type = proc_line + "\r\n\r\n";
+                        break;
+                    }
+                }
+                String chunked_response = "HTTP/1.1 200 OK\r\n" +
+                        "Date: " + new Date() + "\r\n" +
+                        "Server: JZAS Server\r\n" +
+                        "Last-Modified: " + lastModified + "\r\n" +
+                        "Transfer-Encoding: chunked\r\n" +
+                        content_type;
+                clientSocket.getOutputStream().write((chunked_response).getBytes());
+                while ((proc_line = process_in.readLine()) != null) {
+                    if (proc_line.length() == 0) {
+                        continue;
+                    }
+                    clientSocket.getOutputStream().write(
+                            (Integer.toHexString((proc_line.length())) + "\r\n" +
+                            proc_line + "\r\n").getBytes());
+                }
+
+                return ("0\r\n\r\n").getBytes();
+            }
+
             int process_char;
             int count = 0;
             boolean flag = false;
@@ -459,7 +488,6 @@ public class RequestHandler {
                 responseBody += character;
             }
 
-            System.out.println(responseBody);
             try {
                 if (process.waitFor() != 0) {
                     return constructErrorResponse(400, "Bad Request");

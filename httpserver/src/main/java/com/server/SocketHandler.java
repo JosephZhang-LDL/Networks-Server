@@ -49,7 +49,7 @@ public class SocketHandler implements Runnable {
             if (headerComplete) {
                 byte[] rawHeader = buffer.toByteArray();
                 String header = new String(rawHeader, "UTF-8");
-                RequestHandler handler = new RequestHandler(header, locations, authorizationCache, clientSocket);
+                RequestHandler handler = new RequestHandler(header, locations, authorizationCache, clientSocket, out);
                 byte[] responseString = handler.getResponse();
                 // System.out.println(responseString);
                 out.write(responseString);
