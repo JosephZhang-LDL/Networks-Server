@@ -79,7 +79,21 @@ public class RequestHandler {
 
     public byte[] getResponse() {
         if (this.fields.get("Path").equals("/heartbeat")) {
-            return constructErrorResponse(200, "OK");
+            this.fields.put("Path", "/");
+            if (new String(this.handleGet()).substring(0, 12).equals("HTTP/1.1 200")){
+                this.fields.put("Path", "/cgi/default.cgi");
+                this.fields.put("Body", "param1=value1");
+                this.fields.put("Content-Type", "application/x-www-urlencoded");
+                this.fields.put("Content-Length", "13");
+                if (new String(this.handlePost()).substring(0, 12).equals("HTTP/1.1 200")){
+                    return constructErrorResponse(200, "OK");
+                } else {
+                    return constructErrorResponse(500, "Internal Server Error");
+                }
+            }
+            else {
+                return constructErrorResponse(500, "Internal Server Error");
+            }
         } else {
             if (this.getMethod().equals("GET")) {
                 return this.handleGet();
