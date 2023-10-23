@@ -17,11 +17,11 @@ public class SocketHandler implements Runnable {
         this.locations = locations;
         this.authorizationCache = authorizationCache;
     }
-    
+
     public String errorResponse(Exception e) {
         return "HTTP/1.1 500 " + e.toString() + "\r\n";
     }
-    
+
     public void run() {
         InputStream in = null;
         OutputStream out = null;
@@ -49,7 +49,7 @@ public class SocketHandler implements Runnable {
             if (headerComplete) {
                 byte[] rawHeader = buffer.toByteArray();
                 String header = new String(rawHeader, "UTF-8");
-                RequestHandler handler = new RequestHandler(header, locations, authorizationCache);
+                RequestHandler handler = new RequestHandler(header, locations, authorizationCache, clientSocket);
                 byte[] responseString = handler.getResponse();
                 // System.out.println(responseString);
                 out.write(responseString);

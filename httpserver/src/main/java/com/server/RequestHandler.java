@@ -2,18 +2,23 @@ package com.server;
 
 import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.Hashtable;
 import java.util.Map;
+import java.net.Socket;
 
 import javax.imageio.ImageIO;
 
@@ -25,10 +30,12 @@ public class RequestHandler {
     private Hashtable<String, String> fields = new Hashtable<String, String>();
     private AuthorizationCache authCache = new AuthorizationCache();
     private Locations locations = null;
+    private Socket clientSocket;
 
-    public RequestHandler(String request, Locations locations, AuthorizationCache authCache) {
+    public RequestHandler(String request, Locations locations, AuthorizationCache authCache, Socket clientSocket) {
         this.authCache = authCache;
         this.locations = locations;
+        this.clientSocket = clientSocket;
 
         String[] sections = request.split("\r\n\r\n");
 
@@ -138,14 +145,109 @@ public class RequestHandler {
         String contentType = "";
         String responseLength = "";
         Date lastModified = new Date();
+        String[] fileParts = filePath.split("\\.");
+        String extension = fileParts[fileParts.length - 1];
         // do file execution
-        if (f.canExecute()) {
-            return constructErrorResponse(403, "Forbidden");
+        if (f.canExecute() || extension.equals("cgi|pl")) {
+            String queryString = "";
+            if (this.fields.get("Content-Type").equals("application/x-www-form-urlencoded")) {
+                queryString = this.fields.get("Body");
+            } else if (this.fields.get("Content-Type").equals("application/json")) {
+                String[] parameters = this.fields.get("Body").replace("{", "").replace("}", "").replace("\"", "").split(",");
+                for (String parameterPair : parameters) {
+                    try {
+                        String key = parameterPair.split(":")[0].trim();
+                        String value = parameterPair.split(":")[1].trim();
+                        if (queryString.equals("")) {
+                            queryString = key + "=" + value;
+                        } else {
+                            queryString += "&" + key + "=" + value;
+                        }
+                    } catch (ArrayIndexOutOfBoundsException e) {
+                        e.printStackTrace();
+                        return constructErrorResponse(400, "Bad Request");
+                    }
+                }
+            } else {
+                System.out.println("Content-Type not recognized.");
+                return constructErrorResponse(415, "Unsupported Media Type");
+            }
+
+            try {
+                BufferedReader in = new BufferedReader(new FileReader(filePath));
+                String line = in.readLine();
+                in.close();
+                String[] lineParts = line.split(" ");
+                lineParts[0] = lineParts[0].replace("#!", "");
+                String[] inputParts = Arrays.copyOf(lineParts, lineParts.length + 1);
+                inputParts[inputParts.length - 1] = filePath;
+
+                ProcessBuilder pb = new ProcessBuilder(inputParts);
+                pb.redirectErrorStream(true);
+                Map<String, String> env = pb.environment();
+                env.clear();
+                env.put("QUERY_STRING", queryString);
+                env.put("REMOTE_ADDR", this.clientSocket.getInetAddress().toString().replace("/", ""));
+                env.put("REMOTE_HOST", this.clientSocket.getInetAddress().getCanonicalHostName());
+                env.put("REQUEST_METHOD", this.fields.get("Method"));
+                env.put("SERVER_NAME", this.fields.get("Host").split(":")[0]);
+                env.put("SERVER_PORT", this.fields.get("Host").split(":")[1]);
+                env.put("SERVER_PROTOCOL", this.fields.get("Version"));
+                env.put("SERVER_SOFTWARE", "Java/" + System.getProperty("java.version"));
+                env.put("CONTENT_LENGTH", Integer.toString(queryString.length()));
+                System.out.println(env.toString());
+
+                Process process = pb.start();
+                BufferedReader process_in = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                int process_char;
+                int count = 0;
+                boolean flag = false;
+                while ((process_char = process_in.read()) != -1) {
+                    char character = (char) process_char;
+                    if (character == '\n') {
+                    }
+                    if (!flag) {
+                        if (character == '\n') {
+                            responseBody += character;
+                            process_char = process_in.read();
+                            if (process_char != -1) {
+                                character = (char) process_char;
+                                if (character == '\r'){
+                                    flag = true;
+                                }
+                            }
+                        } else {
+                            count++;
+                        }
+                    }
+                    responseBody += character;
+                }
+
+                System.out.println(responseBody);
+                try {
+                    if (process.waitFor() != 0) {
+                        return constructErrorResponse(400, "Bad Request");
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                    return constructErrorResponse(400, "Bad Request");
+                }
+
+                responseLength = Integer.toString(responseBody.length() - count - 3);
+
+                return ("HTTP/1.1 200 OK\r\n" +
+                            "Date: " + new Date() + "\r\n" +
+                            "Server: JZAS Server\r\n" +
+                            "Last-Modified: " + lastModified + "\r\n" +
+                            "Content-Length: " + responseLength + "\r\n" +
+                            responseBody).getBytes();
+            } catch (IOException e) {
+                e.printStackTrace();
+                return constructErrorResponse(404, "Unable to Read the File");
+            }
+
         } else if (f.exists()) {
             try {
-                String[] fileParts = filePath.split("\\.");
-                String extension = fileParts[fileParts.length - 1];
-
                 // CHECK 1: LAST MODIFIED CHECK
                 lastModified = new Date(f.lastModified());
                 if (this.fields.get("If-Modified-Since") != null) {
@@ -291,123 +393,94 @@ public class RequestHandler {
         String responseBody = "";
         String responseLength = "";
         Date lastModified = new Date();
-        // do file execution
-        // if (!f.canExecute()) {
-        //     return constructErrorResponse(403, "Forbidden");
-        // }
-        // else
-        if (f.exists()) {
-            String[] parameters;
-            Hashtable<String, String> environmentVariables = new Hashtable<String, String>();
-
-            if (this.fields.get("Content-Type").equals("application/x-www-form-urlencoded")) {
-                parameters = this.fields.get("Body").split("&");
-                for (String parameterPair : parameters) {
-                    try {
-                        String key = parameterPair.split("=")[0].trim();
-                        String value = parameterPair.split("=")[1].trim();
-                        environmentVariables.put(key, value);
-                    } catch (ArrayIndexOutOfBoundsException e) {
-                        e.printStackTrace();
-                        return constructErrorResponse(400, "Bad Request");
-                    }
-                }
-            } else if (this.fields.get("Content-Type").equals("application/json")) {
-                parameters = this.fields.get("Body").replace("{", "").replace("}", "").replace("\"", "").split(",");
-                for (String parameterPair : parameters) {
-                    try {
-                        String key = parameterPair.split(":")[0].trim();
-                        String value = parameterPair.split(":")[1].trim();
-                        environmentVariables.put(key, value);
-                    } catch (ArrayIndexOutOfBoundsException e) {
-                        e.printStackTrace();
-                        return constructErrorResponse(400, "Bad Request");
-                    }
-                }
-            } else {
-                System.out.println("Content-Type not recognized.");
-                return constructErrorResponse(415, "Unsupported Media Type");
-            }
-
-            try {
-                String[] fileParts = filePath.split("\\.");
-                String extension = fileParts[fileParts.length - 1];
-                if (!extension.matches("cgi|pl")) {
-                    System.out.println("Extension not recognized.");
-                    return constructErrorResponse(403, "Forbidden");
-                }
-                BufferedReader in = new BufferedReader(new FileReader(filePath));
-                String line = in.readLine();
-                in.close();
-                String[] lineParts = line.split(" ");
-                lineParts[0] = lineParts[0].replace("#!", "");
-                String[] inputParts = Arrays.copyOf(lineParts, lineParts.length + 1);
-                inputParts[inputParts.length - 1] = filePath;
-
-                ProcessBuilder pb = new ProcessBuilder(inputParts);
-                pb.redirectErrorStream(true);
-                Map<String, String> env = pb.environment();
-                for (String key : environmentVariables.keySet()) {
-                    env.put(key, environmentVariables.get(key));
-                }
-
-                Process process = pb.start();
-                BufferedReader process_in = new BufferedReader(new InputStreamReader(process.getInputStream()));
-                int process_char;
-                int count = 0;
-                boolean flag = false;
-                while ((process_char = process_in.read()) != -1) {
-                    char character = (char) process_char;
-                    if (character == '\n') {
-                        System.out.println(responseBody + Integer.toString(count) + Integer.toString(responseBody.length()));
-                    }
-                    if (!flag) {
-                        if (character == '\n') {
-                            responseBody += character;
-                            process_char = process_in.read();
-                            if (process_char != -1) {
-                                character = (char) process_char;
-                                if (character == '\r'){
-                                    flag = true;
-                                }
-                            }
-                        } else {
-                            count++;
-                        }
-                    }
-                    responseBody += character;
-                }
-                // responseBody = responseBody + "\r\n";
-
-                System.out.println(responseBody);
-                try {
-                    if (process.waitFor() != 0) {
-                        return constructErrorResponse(400, "Bad Request");
-                    }
-                } catch (InterruptedException e) {
-                    // TODO: handle exception
-                    e.printStackTrace();
-                    return constructErrorResponse(400, "Bad Request");
-                }
-
-                responseLength = Integer.toString(responseBody.length() - count - 3);
-
-                return ("HTTP/1.1 200 OK\r\n" +
-                            "Date: " + new Date() + "\r\n" +
-                            "Server: JZAS Server\r\n" +
-                            "Last-Modified: " + lastModified + "\r\n" +
-                            "Content-Length: " + responseLength + "\r\n" +
-                            responseBody).getBytes();
-            } catch (IOException e) {
-                // TODO: handle exception
-                e.printStackTrace();
-                return constructErrorResponse(404, "Unable to Read the File");
-            }
-
-
+        if (!f.exists()) {
+            return constructErrorResponse(404, "Not Found");
         }
 
-        return "".getBytes();
+        try {
+            String[] fileParts = filePath.split("\\.");
+            String extension = fileParts[fileParts.length - 1];
+            if (!extension.matches("cgi|pl")) {
+                System.out.println("Extension not recognized.");
+                return constructErrorResponse(403, "Forbidden");
+            }
+            BufferedReader in = new BufferedReader(new FileReader(filePath));
+            String line = in.readLine();
+            in.close();
+            String[] lineParts = line.split(" ");
+            lineParts[0] = lineParts[0].replace("#!", "");
+            String[] inputParts = Arrays.copyOf(lineParts, lineParts.length + 1);
+            inputParts[inputParts.length - 1] = filePath;
+
+            ProcessBuilder pb = new ProcessBuilder(inputParts);
+            pb.redirectErrorStream(true);
+
+            Map<String, String> env = pb.environment();
+            env.clear();
+            env.put("QUERY_STRING", "");
+            env.put("REMOTE_ADDR", this.clientSocket.getInetAddress().toString().replace("/", ""));
+            env.put("REMOTE_HOST", this.clientSocket.getInetAddress().getCanonicalHostName());
+            env.put("REQUEST_METHOD", this.fields.get("Method"));
+            env.put("SERVER_NAME", this.fields.get("Host").split(":")[0]);
+            env.put("SERVER_PORT", this.fields.get("Host").split(":")[1]);
+            env.put("SERVER_PROTOCOL", this.fields.get("Version"));
+            env.put("SERVER_SOFTWARE", "Java/" + System.getProperty("java.version"));
+            System.out.println(env.toString());
+
+            Process process = pb.start();
+            OutputStream stdin = process.getOutputStream();
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(stdin));
+            writer.write(this.fields.get("Body"));
+            writer.flush();
+            writer.close();
+
+            BufferedReader process_in = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            int process_char;
+            int count = 0;
+            boolean flag = false;
+            while ((process_char = process_in.read()) != -1) {
+                char character = (char) process_char;
+                if (character == '\n') {
+                }
+                if (!flag) {
+                    if (character == '\n') {
+                        responseBody += character;
+                        process_char = process_in.read();
+                        if (process_char != -1) {
+                            character = (char) process_char;
+                            if (character == '\r'){
+                                flag = true;
+                            }
+                        }
+                    } else {
+                        count++;
+                    }
+                }
+                responseBody += character;
+            }
+
+            System.out.println(responseBody);
+            try {
+                if (process.waitFor() != 0) {
+                    return constructErrorResponse(400, "Bad Request");
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                return constructErrorResponse(400, "Bad Request");
+            }
+
+            responseLength = Integer.toString(responseBody.length() - count - 3);
+
+            return ("HTTP/1.1 200 OK\r\n" +
+                        "Date: " + new Date() + "\r\n" +
+                        "Server: JZAS Server\r\n" +
+                        "Last-Modified: " + lastModified + "\r\n" +
+                        "Content-Length: " + responseLength + "\r\n" +
+                        responseBody).getBytes();
+        } catch (IOException e) {
+            e.printStackTrace();
+            return constructErrorResponse(404, "Unable to Read the File");
+        }
     }
 
     /**
