@@ -110,4 +110,17 @@ public class SocketHandler implements Runnable {
         }
         return false;
     }
+
+    public void write(byte[] response) throws IOException {
+        OutputStream out = clientSocket.getOutputStream();
+        out.write(response);
+    }
+
+    public String getClientAddress() {
+        return clientSocket.getInetAddress().toString().replace("/", "");
+    }
+
+    public String getClientHost() {
+        return clientSocket.getInetAddress().getCanonicalHostName();
+    }
 }

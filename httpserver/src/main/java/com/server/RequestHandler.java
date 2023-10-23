@@ -17,6 +17,7 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.Hashtable;
+import java.util.List;
 import java.util.Map;
 import java.util.Stack;
 
@@ -33,12 +34,61 @@ public class RequestHandler {
     private Socket clientSocket;
     private OutputStream out;
 
-    public RequestHandler(String request, Locations locations, AuthorizationCache authCache, Socket clientSocket, OutputStream out) {
+    public RequestHandler(String request, Locations locations, AuthorizationCache authCache, Socket clientSocket,
+            OutputStream out) {
         this.authCache = authCache;
         this.locations = locations;
         this.clientSocket = clientSocket;
         this.out = out;
+    }
 
+    /**
+     * For STDIN
+     * 
+     * @param fields
+     * @param request
+     * @return the error response or empty string "" if the request is valid
+     */
+    public String readRequest(Hashtable<String, String> fields, String request, List<Byte> buffer) {
+        this.parseHeaders(fields, request);
+        String valid = this.isValid(fields);
+        if (valid.length() != 0) {
+            return valid;
+        }
+
+        return this.readFile(fields, buffer);
+    }
+
+    public void writeResponse(Hashtable<String, String> fields, String method, List<Byte> response, SocketHandler socketHandler) {
+        if (method.equals("GET")) {
+            byte[] responseBytes = new byte[response.size()];
+            for (int i = 0; i < response.size(); i++) {
+                responseBytes[i] = response.get(i);
+            }
+            try {
+                socketHandler.write(responseBytes);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        } else if (method.equals("POST")) {
+            this.writePostResponse(fields, socketHandler);
+        }
+
+        byte[] defaultResponse = constructErrorResponse(400, "Bad Request").getBytes();
+        try {
+            socketHandler.write(defaultResponse);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Parses the headers and inserts them into the provided hashtable pointer
+     * 
+     * @param fields
+     * @param request
+     */
+    private void parseHeaders(Hashtable<String, String> fields, String request) {
         String[] sections = request.split("\r\n\r\n");
 
         // Read each header field line into a hash table
@@ -73,61 +123,56 @@ public class RequestHandler {
         System.out.println();
     }
 
-    public String getMethod() {
-        return this.fields.get("Method");
-    }
-
-    public byte[] getResponse() {
-        if (this.getMethod().equals("GET")) {
-            return this.handleGet();
-        } else if (this.getMethod().equals("POST")) {
-            return this.handlePost();
+    /**
+     * Parses for viable fields/valid file path
+     * if the file path is valid
+     * add a key:value pair to the request hash table
+     * 
+     * @return the error response or empty string "" if the request is valid
+     */
+    private String isValid(Hashtable<String, String> fields) {
+        // Check for required fields
+        if (!fields.containsKey("Method") ||
+                !fields.containsKey("Path") ||
+                !fields.containsKey("Version")) {
+            return constructErrorResponse(400, "Bad Request");
         }
-        return "".getBytes();
-    }
 
-    // Normal Error Response
-    public byte[] constructErrorResponse(int errorCode, String description) {
-        return ("HTTP/1.1 " + errorCode + " " + description + "\r\n" +
-                "Date: " + new Date() + "\r\n" +
-                "Server: JZAS Server\r\n" +
-                "\r\n\r\n").getBytes();
-    }
-
-    // Error Response with children
-    public byte[] constructErrorResponse(int errorCode, String description, String children) {
-        return ("HTTP/1.1 " + errorCode + " " + description + "\r\n" +
-                "Date: " + new Date() + "\r\n" +
-                "Server: JZAS Server\r\n" +
-                children + "\r\n" +
-                "\r\n\r\n").getBytes();
-    }
-
-    public byte[] handleGet() {
-        String hostPath = this.locations.getDefaultLocation();
-        if (this.fields.get("Host") != null) {
-            hostPath = this.locations.getLocation(this.fields.get("Host"));
+        // Check for valid method
+        if (!fields.get("Method").equals("GET") &&
+                !fields.get("Method").equals("POST")) {
+            return constructErrorResponse(400, "Bad Request");
         }
+
+        // Check for valid version
+        if (!fields.get("Version").equals("HTTP/1.1")) {
+            return constructErrorResponse(400, "Bad Request");
+        }
+
+        // Bad host check
+        if (fields.get("Host") != null && this.locations.getLocation(fields.get("Host")) == null) {
+            return constructErrorResponse(400, "Bad Request");
+        }
+        String hostPath = fields.get("Host") == null ? this.locations.getDefaultLocation()
+                : this.locations.getLocation(fields.get("Host"));
 
         // Construct the file path and match against Config
         Boolean found = false;
-        String filePath = hostPath + this.fields.get("Path").split("\\?")[0];
+        String filePath = hostPath + fields.get("Path").split("\\?")[0];
 
         // BAD FILE CHECK: if path tries to go out of bounds
         if (filePath.contains("..")) {
-            String resolvedRelativePath = this.createPath(this.fields.get("Path"));
+            String resolvedRelativePath = this.createPath(fields.get("Path"));
             if (resolvedRelativePath == null) {
-                System.out.println("Error: Invalid file path");
                 return constructErrorResponse(400, "Bad Request");
             }
             filePath = hostPath + resolvedRelativePath;
-            System.out.println("=====NEW PATH IS:" + filePath);
         }
 
-        // if empty path
+        // EMPTY PATH CHECK
         if (filePath.charAt(filePath.length() - 1) == '/') {
             // check for mobile
-            if (this.fields.get("User-Agent").contains("iPhone") || this.fields.get("User-Agent").contains("android")) {
+            if (fields.get("User-Agent").matches(".*iPhone.*|.*android.*")) {
                 File f = new File(filePath + "index_m.html");
                 if (f.exists() && !f.isDirectory()) {
                     filePath = filePath + "index_m.html";
@@ -147,20 +192,77 @@ public class RequestHandler {
             }
         }
 
+        fields.put("filePath", filePath);
+
+        return "";
+    }
+
+    private String readFile(Hashtable<String, String> fields, List<Byte> buffer) {
+        String filePath = fields.get("filePath");
         File f = new File(filePath);
-        String responseBody = "";
         String contentType = "";
         String responseLength = "";
         Date lastModified = new Date();
+        String responseBody = "";
+
         String[] fileParts = filePath.split("\\.");
         String extension = fileParts[fileParts.length - 1].split("\\?")[0];
-        // do file execution
-        if (f.canExecute() || extension.equals("cgi|pl")) {
+
+        // CHECK 0: FILE EXISTS CHECK
+        if (!f.exists()) {
+            return constructErrorResponse(404, "Not Found");
+        }
+
+        // CHECK 1: LAST MODIFIED CHECK
+        lastModified = new Date(f.lastModified());
+        if (fields.get("If-Modified-Since") != null) {
+            try {
+                SimpleDateFormat dateFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");
+                Date ifModifiedSince = dateFormat.parse(fields.get("If-Modified-Since"));
+                if (ifModifiedSince.after(lastModified)) {
+                    return constructErrorResponse(304, "Not Modified");
+                }
+            } catch (Exception e) {
+                return constructErrorResponse(409, "Conflict");
+            }
+        }
+
+        // CHECK 2 : TYPE CHECK
+        if (fields.get("Accept") != null && !fields.get("Accept").equals("*/*")) {
+            String[] acceptTypes = fields.get("Accept").split(",");
+            Boolean foundType = false;
+            for (String type : acceptTypes) {
+                if (type.contains(extension)) {
+                    foundType = true;
+                    break;
+                }
+            }
+            if (!foundType) {
+                return constructErrorResponse(406, "Not Acceptable");
+            }
+        }
+
+        // CHECK 3: AUTHORIZATION CHECK
+        String authResults = this.handleAuthorization(filePath.split("/"));
+
+        if (authResults.length() != 0) {
+            return constructErrorResponse(401, "Unauthorized",
+                    "WWW-Authenticate: Basic realm=\"" + authResults + "\"");
+        }
+
+        // HANDLING FILE EXECUTION
+        // HANDLE POST SEPERATELY
+        if (fields.get("Method").equals("POST")) {
+            return "";
+        }
+
+        if (f.canExecute() || extension.matches("cgi|pl")) {
             String queryString = "";
-            queryString = this.fields.get("Path").split("\\?")[1];
-            if (!this.fields.containsKey("Content-Type") || !this.fields.get("Content-Type").equals("application/x-www-urlencoded")){
+            queryString = fields.get("Path").split("\\?")[1];
+            if (!fields.containsKey("Content-Type")
+                    || !fields.get("Content-Type").equals("application/x-www-urlencoded")) {
                 System.out.println("Missing Header");
-                return constructErrorResponse(400, "Bad Request");
+                String err = constructErrorResponse(400, "Bad Request");
             }
 
             try {
@@ -202,7 +304,7 @@ public class RequestHandler {
                             process_char = process_in.read();
                             if (process_char != -1) {
                                 character = (char) process_char;
-                                if (character == '\r'){
+                                if (character == '\r') {
                                     flag = true;
                                 }
                             }
@@ -225,160 +327,109 @@ public class RequestHandler {
 
                 responseLength = Integer.toString(responseBody.length() - count - 3);
 
-                return ("HTTP/1.1 200 OK\r\n" +
-                            "Date: " + new Date() + "\r\n" +
-                            "Server: JZAS Server\r\n" +
-                            "Last-Modified: " + lastModified + "\r\n" +
-                            "Content-Length: " + responseLength + "\r\n" +
-                            responseBody).getBytes();
+                byte[] response = ("HTTP/1.1 200 OK\r\n" +
+                        "Date: " + new Date() + "\r\n" +
+                        "Server: JZAS Server\r\n" +
+                        "Last-Modified: " + lastModified + "\r\n" +
+                        "Content-Length: " + responseLength + "\r\n" +
+                        responseBody).getBytes();
+                
+                for (byte b : response) {
+                    buffer.add(b);
+                }
+
+                return "";
             } catch (IOException e) {
                 e.printStackTrace();
                 return constructErrorResponse(404, "Unable to Read the File");
             }
 
-        } else if (f.exists()) {
-            try {
-                // CHECK 1: LAST MODIFIED CHECK
-                lastModified = new Date(f.lastModified());
-                if (this.fields.get("If-Modified-Since") != null) {
-                    try {
-                        SimpleDateFormat dateFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");
-                        Date ifModifiedSince = dateFormat.parse(this.fields.get("If-Modified-Since"));
-                        if (ifModifiedSince.after(lastModified)) {
-                            return constructErrorResponse(304, "Not Modified");
-                        }
-                    } catch (Exception e) {
-                        return constructErrorResponse(409, "Conflict");
-                    }
+        }
+
+        try {
+            // HANDLING IMAGES
+            if (extension.matches("jpg|jpeg|png")) {
+                contentType = "image/" + extension;
+
+                BufferedImage image = ImageIO.read(new FileInputStream(f));
+                if (image == null) {
+                    return constructErrorResponse(404, "Not Found");
                 }
 
-                // CHECK 2 : TYPE CHECK
-                if (this.fields.get("Accept") != null && !this.fields.get("Accept").equals("*/*")) {
-                    String[] acceptTypes = this.fields.get("Accept").split(",");
-                    Boolean foundType = false;
-                    for (String type : acceptTypes) {
-                        if (type.contains(extension)) {
-                            foundType = true;
-                            break;
-                        }
-                    }
-                    if (!foundType) {
-                        return constructErrorResponse(406, "Not Acceptable");
-                    }
+                ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+                ImageIO.write(image, extension, byteArrayOutputStream);
+                byte[] imageReturn = byteArrayOutputStream.toByteArray();
+                responseLength = String.valueOf(imageReturn.length);
+
+                byte[] headers = ("HTTP/1.1 200 OK\r\n" +
+                        "Date: " + new Date() + "\r\n" +
+                        "Server: JZAS Server\r\n" +
+                        "Last-Modified: " + lastModified + "\r\n" +
+                        "Content-Type: " + contentType + "\r\n" +
+                        "Content-Length: " + responseLength + "\r\n" +
+                        "\r\n").getBytes();
+
+                for (byte b : headers) {
+                    buffer.add(b);
+                }
+                for (byte b : imageReturn) {
+                    buffer.add(b);
                 }
 
-                // CHECK 3: AUTHORIZATION CHECK
-                String authResults = this.handleAuthorization(filePath.split("/"));
-
-                if (!authResults.equals("1")) {
-                    return constructErrorResponse(401, "Unauthorized",
-                            "WWW-Authenticate: Basic realm=\"" + authResults + "\"");
-                }
-
-                // HANDLING IMAGES
-                if (extension.matches("jpg|jpeg|png")) {
-                    contentType = "image/" + extension;
-
-                    BufferedImage image = ImageIO.read(new FileInputStream(f));
-                    if (image == null) {
-                        return constructErrorResponse(404, "Not Found");
-                    }
-
-                    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-                    ImageIO.write(image, extension, byteArrayOutputStream);
-                    byte[] imageReturn = byteArrayOutputStream.toByteArray();
-                    responseLength = String.valueOf(imageReturn.length);
-
-                    byte[] headers = ("HTTP/1.1 200 OK\r\n" +
-                            "Date: " + new Date() + "\r\n" +
-                            "Server: JZAS Server\r\n" +
-                            "Last-Modified: " + lastModified + "\r\n" +
-                            "Content-Type: " + contentType + "\r\n" +
-                            "Content-Length: " + responseLength + "\r\n" +
-                            "\r\n").getBytes();
-
-                    byte[] combinedResponse = new byte[headers.length + imageReturn.length];
-                    System.arraycopy(headers, 0, combinedResponse, 0, headers.length);
-                    System.arraycopy(imageReturn, 0, combinedResponse, headers.length, imageReturn.length);
-
-                    return combinedResponse;
-                }
-                // HANDLING TEXT AND HTML
-                else if (extension.matches("html|txt")) {
-                    if (extension.equals("html")) {
-                        contentType = "text/html";
-                    } else {
-                        contentType = "text/plain";
-                    }
-
-                    BufferedReader in = new BufferedReader(new FileReader(filePath));
-                    String line;
-                    while ((line = in.readLine()) != null) {
-                        responseBody += line + "\r\n";
-                    }
-                    in.close();
-                    responseLength = String.valueOf(responseBody.length());
-
-                    return ("HTTP/1.1 200 OK\r\n" +
-                            "Date: " + new Date() + "\r\n" +
-                            "Server: JZAS Server\r\n" +
-                            "Last-Modified: " + lastModified + "\r\n" +
-                            "Content-Type: " + contentType + "\r\n" +
-                            "Content-Length: " + responseLength + "\r\n" +
-                            "\r\n" +
-                            responseBody).getBytes();
-                } else {
-                    return constructErrorResponse(404, "Unable to read the file");
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-                return constructErrorResponse(404, "Not Found");
+                return "";
             }
+            // HANDLING TEXT AND HTML
+            else if (extension.matches("html|txt")) {
+                if (extension.equals("html")) {
+                    contentType = "text/html";
+                } else {
+                    contentType = "text/plain";
+                }
 
-        } else {
+                BufferedReader in = new BufferedReader(new FileReader(filePath));
+                String line;
+                while ((line = in.readLine()) != null) {
+                    responseBody += line + "\r\n";
+                }
+                in.close();
+                responseLength = String.valueOf(responseBody.length());
+
+                byte[] response = ("HTTP/1.1 200 OK\r\n" +
+                        "Date: " + new Date() + "\r\n" +
+                        "Server: JZAS Server\r\n" +
+                        "Last-Modified: " + lastModified + "\r\n" +
+                        "Content-Type: " + contentType + "\r\n" +
+                        "Content-Length: " + responseLength + "\r\n" +
+                        "\r\n" +
+                        responseBody).getBytes();
+                
+                for (byte b : response) {
+                    buffer.add(b);
+                }
+
+                return "";
+            } else {
+                return constructErrorResponse(404, "Unable to read the file");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
             return constructErrorResponse(404, "Not Found");
         }
     }
 
-    public byte[] handlePost() {
-        String hostPath = this.locations.getDefaultLocation();
-        if (this.fields.get("Host") != null) {
-            hostPath = this.locations.getLocation(this.fields.get("Host"));
-        }
-
-        // Construct the file path and match against Config
-        String filePath = hostPath + this.fields.get("Path");
-
-        // BAD FILE CHECK: if path tries to go out of bounds
-        if (filePath.contains("..")) {
-            String resolvedRelativePath = this.createPath(filePath);
-            if (resolvedRelativePath == null) {
-                System.out.println("Error: Invalid file path");
-                return constructErrorResponse(400, "Bad Request");
-            }
-            filePath = hostPath + resolvedRelativePath;
-        }
-
-        // if empty path or HTML
-        if (filePath.charAt(filePath.length() - 1) == '/') {
-            System.out.println("Method not allowed.");
-            return constructErrorResponse(405, "Method Not Allowed");
-        }
-
+    private void writePostResponse(Hashtable<String, String> fields, SocketHandler socketHandler) {
+        String filePath = fields.get("filePath");
         File f = new File(filePath);
         String responseBody = "";
         String responseLength = "";
         Date lastModified = new Date();
-        if (!f.exists()) {
-            return constructErrorResponse(404, "Not Found");
-        }
 
         try {
             String[] fileParts = filePath.split("\\.");
             String extension = fileParts[fileParts.length - 1];
             if (!extension.matches("cgi|pl")) {
                 System.out.println("Extension not recognized.");
-                return constructErrorResponse(403, "Forbidden");
+                socketHandler.write(constructErrorResponse(403, "Forbidden").getBytes());
             }
             BufferedReader in = new BufferedReader(new FileReader(filePath));
             String line = in.readLine();
@@ -394,26 +445,27 @@ public class RequestHandler {
             Map<String, String> env = pb.environment();
             env.clear();
             env.put("QUERY_STRING", "");
-            env.put("REMOTE_ADDR", this.clientSocket.getInetAddress().toString().replace("/", ""));
-            env.put("REMOTE_HOST", this.clientSocket.getInetAddress().getCanonicalHostName());
-            env.put("REQUEST_METHOD", this.fields.get("Method"));
-            env.put("SERVER_NAME", this.fields.get("Host").split(":")[0]);
-            env.put("SERVER_PORT", this.fields.get("Host").split(":")[1]);
-            env.put("SERVER_PROTOCOL", this.fields.get("Version"));
+            env.put("REMOTE_ADDR", socketHandler.getClientAddress());
+            env.put("REMOTE_HOST", socketHandler.getClientHost());
+            env.put("REQUEST_METHOD", fields.get("Method"));
+            env.put("SERVER_NAME", fields.get("Host").split(":")[0]);
+            env.put("SERVER_PORT", fields.get("Host").split(":")[1]);
+            env.put("SERVER_PROTOCOL", fields.get("Version"));
             env.put("SERVER_SOFTWARE", "Java/" + System.getProperty("java.version"));
 
             Process process = pb.start();
             OutputStream stdin = process.getOutputStream();
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(stdin));
-            writer.write(this.fields.get("Body"));
+            writer.write(fields.get("Body"));
             writer.flush();
             writer.close();
 
             BufferedReader process_in = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            if (this.fields.containsKey("Transfer-Encoding") && this.fields.get("Transfer-Encoding").equals("chunked")){
+            if (fields.containsKey("Transfer-Encoding")
+                    && fields.get("Transfer-Encoding").equals("chunked")) {
                 String proc_line;
                 String content_type = "";
-                while ((proc_line = process_in.readLine()) != null){
+                while ((proc_line = process_in.readLine()) != null) {
                     if (proc_line.split(":")[0].equals("Content-Type")) {
                         content_type = proc_line + "\r\n\r\n";
                         break;
@@ -425,17 +477,19 @@ public class RequestHandler {
                         "Last-Modified: " + lastModified + "\r\n" +
                         "Transfer-Encoding: chunked\r\n" +
                         content_type;
-                clientSocket.getOutputStream().write((chunked_response).getBytes());
+                
+                socketHandler.write((chunked_response).getBytes());
+                        
                 while ((proc_line = process_in.readLine()) != null) {
                     if (proc_line.length() == 0) {
                         continue;
                     }
-                    clientSocket.getOutputStream().write(
+                    socketHandler.write(
                             (Integer.toHexString((proc_line.length())) + "\r\n" +
-                            proc_line + "\r\n").getBytes());
+                                    proc_line + "\r\n").getBytes());
                 }
 
-                return ("0\r\n\r\n").getBytes();
+                socketHandler.write(("0\r\n\r\n").getBytes());
             } else {
                 int process_char;
                 int count = 0;
@@ -450,7 +504,7 @@ public class RequestHandler {
                             process_char = process_in.read();
                             if (process_char != -1) {
                                 character = (char) process_char;
-                                if (character == '\r'){
+                                if (character == '\r') {
                                     flag = true;
                                 }
                             }
@@ -463,29 +517,49 @@ public class RequestHandler {
 
                 try {
                     if (process.waitFor() != 0) {
-                        return constructErrorResponse(400, "Bad Request");
+                        socketHandler.write(constructErrorResponse(400, "Bad Request").getBytes());
                     }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
-                    return constructErrorResponse(400, "Bad Request");
+                    socketHandler.write(constructErrorResponse(400, "Bad Request").getBytes());
                 }
 
                 responseLength = Integer.toString(responseBody.length() - count - 3);
 
-                return ("HTTP/1.1 200 OK\r\n" +
-                            "Date: " + new Date() + "\r\n" +
-                            "Server: JZAS Server\r\n" +
-                            "Last-Modified: " + lastModified + "\r\n" +
-                            "Content-Length: " + responseLength + "\r\n" +
-                            responseBody).getBytes();
+                socketHandler.write(("HTTP/1.1 200 OK\r\n" +
+                        "Date: " + new Date() + "\r\n" +
+                        "Server: JZAS Server\r\n" +
+                        "Last-Modified: " + lastModified + "\r\n" +
+                        "Content-Length: " + responseLength + "\r\n" +
+                        responseBody).getBytes());
 
             }
 
-
         } catch (IOException e) {
             e.printStackTrace();
-            return constructErrorResponse(404, "Unable to Read the File");
+            //socketHandler.write(constructErrorResponse(404, "Unable to Read the File").getBytes());
         }
+    }
+
+    public String getMethod() {
+        return this.fields.get("Method");
+    }
+
+    // Normal Error Response
+    public String constructErrorResponse(int errorCode, String description) {
+        return ("HTTP/1.1 " + errorCode + " " + description + "\r\n" +
+                "Date: " + new Date() + "\r\n" +
+                "Server: JZAS Server\r\n" +
+                "\r\n\r\n");
+    }
+
+    // Error Response with children
+    public String constructErrorResponse(int errorCode, String description, String children) {
+        return ("HTTP/1.1 " + errorCode + " " + description + "\r\n" +
+                "Date: " + new Date() + "\r\n" +
+                "Server: JZAS Server\r\n" +
+                children + "\r\n" +
+                "\r\n\r\n");
     }
 
     /**
@@ -504,7 +578,7 @@ public class RequestHandler {
 
         // If no need to authenticate, then return success
         if (!htaccess.exists()) {
-            return "1";
+            return "";
         }
 
         // Check for cached data
@@ -532,7 +606,8 @@ public class RequestHandler {
                 }
                 in.close();
 
-                authCache.add(directoryPath, new String[] { user, password, authName }, new Date(htaccess.lastModified()));
+                authCache.add(directoryPath, new String[] { user, password, authName },
+                        new Date(htaccess.lastModified()));
             } catch (IOException e) {
                 e.printStackTrace();
                 return "Forbidden";
@@ -552,7 +627,7 @@ public class RequestHandler {
         if (auth[0].equals("Basic") &&
                 user.equals(credentials[0]) &&
                 password.equals(credentials[1])) {
-            return "1";
+            return "";
         }
 
         return authName;
@@ -560,8 +635,10 @@ public class RequestHandler {
 
     /**
      * Tests to see if the path tries to go out of bounds
+     * 
      * @param filepath
-     * @return null if the path tries to go out of bounds, or the normalized path if the path is viable
+     * @return null if the path tries to go out of bounds, or the normalized path if
+     *         the path is viable
      */
     private String createPath(String filepath) {
         Stack<String> pathStack = new Stack<>();
