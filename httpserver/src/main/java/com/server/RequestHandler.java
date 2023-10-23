@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.Hashtable;
+import java.util.Map;
 
 import javax.imageio.ImageIO;
 
@@ -288,7 +289,6 @@ public class RequestHandler {
 
         File f = new File(filePath);
         String responseBody = "";
-        String contentType = "";
         String responseLength = "";
         Date lastModified = new Date();
         // do file execution
@@ -297,11 +297,43 @@ public class RequestHandler {
         // }
         // else
         if (f.exists()) {
-            // && this.fields.get("Content-Type").equals("x-www-form-urlencoded")
+            String[] parameters;
+            Hashtable<String, String> environmentVariables = new Hashtable<String, String>();
+
+            if (this.fields.get("Content-Type").equals("application/x-www-form-urlencoded")) {
+                parameters = this.fields.get("Body").split("&");
+                for (String parameterPair : parameters) {
+                    try {
+                        String key = parameterPair.split("=")[0].trim();
+                        String value = parameterPair.split("=")[1].trim();
+                        environmentVariables.put(key, value);
+                    } catch (ArrayIndexOutOfBoundsException e) {
+                        e.printStackTrace();
+                        return constructErrorResponse(400, "Bad Request");
+                    }
+                }
+            } else if (this.fields.get("Content-Type").equals("application/json")) {
+                parameters = this.fields.get("Body").replace("{", "").replace("}", "").replace("\"", "").split(",");
+                for (String parameterPair : parameters) {
+                    try {
+                        String key = parameterPair.split(":")[0].trim();
+                        String value = parameterPair.split(":")[1].trim();
+                        environmentVariables.put(key, value);
+                    } catch (ArrayIndexOutOfBoundsException e) {
+                        e.printStackTrace();
+                        return constructErrorResponse(400, "Bad Request");
+                    }
+                }
+            } else {
+                System.out.println("Content-Type not recognized.");
+                return constructErrorResponse(415, "Unsupported Media Type");
+            }
+
             try {
                 String[] fileParts = filePath.split("\\.");
                 String extension = fileParts[fileParts.length - 1];
                 if (!extension.matches("cgi|pl")) {
+                    System.out.println("Extension not recognized.");
                     return constructErrorResponse(403, "Forbidden");
                 }
                 BufferedReader in = new BufferedReader(new FileReader(filePath));
@@ -314,6 +346,10 @@ public class RequestHandler {
 
                 ProcessBuilder pb = new ProcessBuilder(inputParts);
                 pb.redirectErrorStream(true);
+                Map<String, String> env = pb.environment();
+                for (String key : environmentVariables.keySet()) {
+                    env.put(key, environmentVariables.get(key));
+                }
 
                 Process process = pb.start();
                 BufferedReader process_in = new BufferedReader(new InputStreamReader(process.getInputStream()));
@@ -324,7 +360,6 @@ public class RequestHandler {
                     char character = (char) process_char;
                     if (character == '\n') {
                         System.out.println(responseBody + Integer.toString(count) + Integer.toString(responseBody.length()));
-
                     }
                     if (!flag) {
                         if (character == '\n') {
