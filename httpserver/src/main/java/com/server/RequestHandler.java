@@ -111,7 +111,7 @@ public class RequestHandler {
 
         // Construct the file path and match against Config
         Boolean found = false;
-        String filePath = hostPath + this.fields.get("Path");
+        String filePath = hostPath + this.fields.get("Path").split("\\?")[0];
 
         // BAD FILE CHECK: if path tries to go out of bounds
         if (filePath.contains("..")) {
@@ -153,31 +153,14 @@ public class RequestHandler {
         String responseLength = "";
         Date lastModified = new Date();
         String[] fileParts = filePath.split("\\.");
-        String extension = fileParts[fileParts.length - 1];
+        String extension = fileParts[fileParts.length - 1].split("\\?")[0];
         // do file execution
         if (f.canExecute() || extension.equals("cgi|pl")) {
             String queryString = "";
-            if (this.fields.get("Content-Type").equals("application/x-www-form-urlencoded")) {
-                queryString = this.fields.get("Body");
-            } else if (this.fields.get("Content-Type").equals("application/json")) {
-                String[] parameters = this.fields.get("Body").replace("{", "").replace("}", "").replace("\"", "").split(",");
-                for (String parameterPair : parameters) {
-                    try {
-                        String key = parameterPair.split(":")[0].trim();
-                        String value = parameterPair.split(":")[1].trim();
-                        if (queryString.equals("")) {
-                            queryString = key + "=" + value;
-                        } else {
-                            queryString += "&" + key + "=" + value;
-                        }
-                    } catch (ArrayIndexOutOfBoundsException e) {
-                        e.printStackTrace();
-                        return constructErrorResponse(400, "Bad Request");
-                    }
-                }
-            } else {
-                System.out.println("Content-Type not recognized.");
-                return constructErrorResponse(415, "Unsupported Media Type");
+            queryString = this.fields.get("Path").split("\\?")[1];
+            if (!this.fields.containsKey("Content-Type") || !this.fields.get("Content-Type").equals("application/x-www-urlencoded")){
+                System.out.println("Missing Header");
+                return constructErrorResponse(400, "Bad Request");
             }
 
             try {
@@ -427,7 +410,7 @@ public class RequestHandler {
             writer.close();
 
             BufferedReader process_in = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            if (this.fields.get("Transfer-Encoding").equals("chunked")){
+            if (this.fields.containsKey("Transfer-Encoding") && this.fields.get("Transfer-Encoding").equals("chunked")){
                 String proc_line;
                 String content_type = "";
                 while ((proc_line = process_in.readLine()) != null){
@@ -453,49 +436,52 @@ public class RequestHandler {
                 }
 
                 return ("0\r\n\r\n").getBytes();
-            }
-
-            int process_char;
-            int count = 0;
-            boolean flag = false;
-            while ((process_char = process_in.read()) != -1) {
-                char character = (char) process_char;
-                if (character == '\n') {
-                }
-                if (!flag) {
+            } else {
+                int process_char;
+                int count = 0;
+                boolean flag = false;
+                while ((process_char = process_in.read()) != -1) {
+                    char character = (char) process_char;
                     if (character == '\n') {
-                        responseBody += character;
-                        process_char = process_in.read();
-                        if (process_char != -1) {
-                            character = (char) process_char;
-                            if (character == '\r'){
-                                flag = true;
-                            }
-                        }
-                    } else {
-                        count++;
                     }
+                    if (!flag) {
+                        if (character == '\n') {
+                            responseBody += character;
+                            process_char = process_in.read();
+                            if (process_char != -1) {
+                                character = (char) process_char;
+                                if (character == '\r'){
+                                    flag = true;
+                                }
+                            }
+                        } else {
+                            count++;
+                        }
+                    }
+                    responseBody += character;
                 }
-                responseBody += character;
-            }
 
-            try {
-                if (process.waitFor() != 0) {
+                try {
+                    if (process.waitFor() != 0) {
+                        return constructErrorResponse(400, "Bad Request");
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                     return constructErrorResponse(400, "Bad Request");
                 }
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-                return constructErrorResponse(400, "Bad Request");
+
+                responseLength = Integer.toString(responseBody.length() - count - 3);
+
+                return ("HTTP/1.1 200 OK\r\n" +
+                            "Date: " + new Date() + "\r\n" +
+                            "Server: JZAS Server\r\n" +
+                            "Last-Modified: " + lastModified + "\r\n" +
+                            "Content-Length: " + responseLength + "\r\n" +
+                            responseBody).getBytes();
+
             }
 
-            responseLength = Integer.toString(responseBody.length() - count - 3);
 
-            return ("HTTP/1.1 200 OK\r\n" +
-                        "Date: " + new Date() + "\r\n" +
-                        "Server: JZAS Server\r\n" +
-                        "Last-Modified: " + lastModified + "\r\n" +
-                        "Content-Length: " + responseLength + "\r\n" +
-                        responseBody).getBytes();
         } catch (IOException e) {
             e.printStackTrace();
             return constructErrorResponse(404, "Unable to Read the File");
@@ -571,7 +557,7 @@ public class RequestHandler {
 
         return authName;
     }
-    
+
     /**
      * Tests to see if the path tries to go out of bounds
      * @param filepath
