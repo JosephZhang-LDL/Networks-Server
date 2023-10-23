@@ -78,11 +78,17 @@ public class RequestHandler {
     }
 
     public byte[] getResponse() {
-        if (this.getMethod().equals("GET")) {
-            return this.handleGet();
-        } else if (this.getMethod().equals("POST")) {
-            return this.handlePost();
+        if (this.fields.get("Path").equals("/heartbeat")) {
+            return constructErrorResponse(200, "OK");
+        } else {
+            if (this.getMethod().equals("GET")) {
+                return this.handleGet();
+            } else if (this.getMethod().equals("POST")) {
+                return this.handlePost();
+            }
         }
+
+
         return "".getBytes();
     }
 
@@ -91,6 +97,7 @@ public class RequestHandler {
         return ("HTTP/1.1 " + errorCode + " " + description + "\r\n" +
                 "Date: " + new Date() + "\r\n" +
                 "Server: JZAS Server\r\n" +
+                "Content-Length: 2\r\n" +
                 "\r\n\r\n").getBytes();
     }
 
