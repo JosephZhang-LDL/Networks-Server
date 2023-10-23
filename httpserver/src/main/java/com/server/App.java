@@ -11,7 +11,6 @@ import java.net.SocketException;
 public final class App {
     private int port = -1;
     private static ConfigurationHandler configurationHandler = null;
-
     // empty constructor
     public App() {
 
@@ -45,14 +44,14 @@ public final class App {
             while ((clientSocket = serverSocket.accept()) != null) {
                 System.out.println("Received connection from " + clientSocket.getRemoteSocketAddress().toString());
                 SocketHandler handler = new SocketHandler(clientSocket, locations, authorizationCache);
-                Thread t = new Thread(handler);
-                t.start();
+                // Submit the handler to the thread pool
+                controlThreadHandler.submit(handler);
             }
         } catch (SocketException e) {
             System.out.println("Shutting Down");
         } finally {
             if (serverSocket != null) {
-                serverSocket.close();
+                controlThreadHandler.shutdown();
             }
         }
     }
