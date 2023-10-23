@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Base64;
@@ -247,13 +248,135 @@ public class RequestHandler {
     }
 
     public byte[] handlePost() {
+        String hostPath = this.locations.getDefaultLocation();
+        if (this.fields.get("Host") != null) {
+            hostPath = this.locations.getLocation(this.fields.get("Host"));
+        }
 
-        // Returns success only on
+        // Construct the file path and match against Config
+        Boolean found = false;
+        String filePath = hostPath + this.fields.get("Path");
+
+        // BAD FILE CHECK: if path tries to go out of bounds
+        if (filePath.contains("..")) {
+            System.out.println("Error: Invalid file path");
+            return constructErrorResponse(400, "Bad Request");
+        }
+
+        // if empty path
+        if (filePath.charAt(filePath.length() - 1) == '/') {
+            // check for mobile
+            if (this.fields.get("User-Agent").contains("iPhone") || this.fields.get("User-Agent").contains("android")) {
+                File f = new File(filePath + "index_m.html");
+                if (f.exists() && !f.isDirectory()) {
+                    filePath = filePath + "index_m.html";
+                    found = true;
+                }
+            }
+            // mobile exclusive wasn't found / user isn't mobile
+            if (!found) {
+                File f = new File(filePath + "index.html");
+                if (f.exists() && !f.isDirectory()) {
+                    filePath = filePath + "index.html";
+                } else if (f.exists() && f.isDirectory()) {
+                    filePath = filePath + "/index.html";
+                } else {
+                    return constructErrorResponse(404, "Not Found");
+                }
+            }
+        }
+
+        File f = new File(filePath);
+        String responseBody = "";
+        String contentType = "";
+        String responseLength = "";
+        Date lastModified = new Date();
+        // do file execution
+        // if (!f.canExecute()) {
+        //     return constructErrorResponse(403, "Forbidden");
+        // }
+        // else
+        if (f.exists()) {
+            // && this.fields.get("Content-Type").equals("x-www-form-urlencoded")
+            try {
+                String[] fileParts = filePath.split("\\.");
+                String extension = fileParts[fileParts.length - 1];
+                if (!extension.matches("cgi|pl")) {
+                    return constructErrorResponse(403, "Forbidden");
+                }
+                BufferedReader in = new BufferedReader(new FileReader(filePath));
+                String line = in.readLine();
+                in.close();
+                String[] lineParts = line.split(" ");
+                lineParts[0] = lineParts[0].replace("#!", "");
+                String[] inputParts = Arrays.copyOf(lineParts, lineParts.length + 1);
+                inputParts[inputParts.length - 1] = filePath;
+
+                ProcessBuilder pb = new ProcessBuilder(inputParts);
+                pb.redirectErrorStream(true);
+
+                Process process = pb.start();
+                BufferedReader process_in = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                int process_char;
+                int count = 0;
+                boolean flag = false;
+                while ((process_char = process_in.read()) != -1) {
+                    char character = (char) process_char;
+                    if (character == '\n') {
+                        System.out.println(responseBody + Integer.toString(count) + Integer.toString(responseBody.length()));
+
+                    }
+                    if (!flag) {
+                        if (character == '\n') {
+                            responseBody += character;
+                            process_char = process_in.read();
+                            if (process_char != -1) {
+                                character = (char) process_char;
+                                if (character == '\r'){
+                                    flag = true;
+                                }
+                            }
+                        } else {
+                            count++;
+                        }
+                    }
+                    responseBody += character;
+                }
+                // responseBody = responseBody + "\r\n";
+
+                System.out.println(responseBody);
+                try {
+                    if (process.waitFor() != 0) {
+                        return constructErrorResponse(400, "Bad Request");
+                    }
+                } catch (InterruptedException e) {
+                    // TODO: handle exception
+                    e.printStackTrace();
+                    return constructErrorResponse(400, "Bad Request");
+                }
+
+                responseLength = Integer.toString(responseBody.length() - count - 3);
+
+                return ("HTTP/1.1 200 OK\r\n" +
+                            "Date: " + new Date() + "\r\n" +
+                            "Server: JZAS Server\r\n" +
+                            "Last-Modified: " + lastModified + "\r\n" +
+                            "Content-Length: " + responseLength + "\r\n" +
+                            responseBody).getBytes();
+            } catch (IOException e) {
+                // TODO: handle exception
+                e.printStackTrace();
+                return constructErrorResponse(404, "Unable to Read the File");
+            }
+
+
+        }
+
         return "".getBytes();
     }
 
     /**
-     * 
+     *
      * @param filepath
      * @return 1 if authorized, "AuthName" if authorization is needed
      */
@@ -265,7 +388,7 @@ public class RequestHandler {
 
         String directoryPath = String.join("/", Arrays.copyOfRange(filepath, 0, filepath.length - 1));
         File htaccess = new File(directoryPath + "/.htaccess");
-        
+
         // If no need to authenticate, then return success
         if (!htaccess.exists()) {
             return "1";
@@ -318,7 +441,7 @@ public class RequestHandler {
                 password.equals(credentials[1])) {
             return "1";
         }
-        
+
         return authName;
     }
 }
