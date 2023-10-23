@@ -3,7 +3,6 @@ package com.server;
 import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -12,13 +11,14 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.net.Socket;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.Hashtable;
 import java.util.Map;
-import java.net.Socket;
+import java.util.Stack;
 
 import javax.imageio.ImageIO;
 
@@ -115,8 +115,13 @@ public class RequestHandler {
 
         // BAD FILE CHECK: if path tries to go out of bounds
         if (filePath.contains("..")) {
-            System.out.println("Error: Invalid file path");
-            return constructErrorResponse(400, "Bad Request");
+            String resolvedRelativePath = this.createPath(this.fields.get("Path"));
+            if (resolvedRelativePath == null) {
+                System.out.println("Error: Invalid file path");
+                return constructErrorResponse(400, "Bad Request");
+            }
+            filePath = hostPath + resolvedRelativePath;
+            System.out.println("=====NEW PATH IS:" + filePath);
         }
 
         // if empty path
@@ -359,36 +364,22 @@ public class RequestHandler {
         }
 
         // Construct the file path and match against Config
-        Boolean found = false;
         String filePath = hostPath + this.fields.get("Path");
 
         // BAD FILE CHECK: if path tries to go out of bounds
         if (filePath.contains("..")) {
-            System.out.println("Error: Invalid file path");
-            return constructErrorResponse(400, "Bad Request");
+            String resolvedRelativePath = this.createPath(filePath);
+            if (resolvedRelativePath == null) {
+                System.out.println("Error: Invalid file path");
+                return constructErrorResponse(400, "Bad Request");
+            }
+            filePath = hostPath + resolvedRelativePath;
         }
 
-        // if empty path
+        // if empty path or HTML
         if (filePath.charAt(filePath.length() - 1) == '/') {
-            // check for mobile
-            if (this.fields.get("User-Agent").contains("iPhone") || this.fields.get("User-Agent").contains("android")) {
-                File f = new File(filePath + "index_m.html");
-                if (f.exists() && !f.isDirectory()) {
-                    filePath = filePath + "index_m.html";
-                    found = true;
-                }
-            }
-            // mobile exclusive wasn't found / user isn't mobile
-            if (!found) {
-                File f = new File(filePath + "index.html");
-                if (f.exists() && !f.isDirectory()) {
-                    filePath = filePath + "index.html";
-                } else if (f.exists() && f.isDirectory()) {
-                    filePath = filePath + "/index.html";
-                } else {
-                    return constructErrorResponse(404, "Not Found");
-                }
-            }
+            System.out.println("Method not allowed.");
+            return constructErrorResponse(405, "Method Not Allowed");
         }
 
         File f = new File(filePath);
@@ -579,5 +570,29 @@ public class RequestHandler {
         }
 
         return authName;
+    }
+    
+    /**
+     * Tests to see if the path tries to go out of bounds
+     * @param filepath
+     * @return null if the path tries to go out of bounds, or the normalized path if the path is viable
+     */
+    private String createPath(String filepath) {
+        Stack<String> pathStack = new Stack<>();
+        String[] pathParts = filepath.split("/");
+
+        for (int i = 1; i < pathParts.length; i++) {
+            String part = pathParts[i];
+
+            if (part.equals("..") && pathStack.empty()) {
+                return null;
+            } else if (part.equals("..")) {
+                pathStack.pop();
+            } else if (!part.equals(".")) {
+                pathStack.push(part);
+            }
+        }
+
+        return "/" + String.join("/", pathStack);
     }
 }
