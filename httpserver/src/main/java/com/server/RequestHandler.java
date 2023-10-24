@@ -11,7 +11,10 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Base64;
@@ -31,52 +34,48 @@ public class RequestHandler {
     private Hashtable<String, String> fields = new Hashtable<String, String>();
     private AuthorizationCache authCache = new AuthorizationCache();
     private Locations locations = null;
-    private Socket clientSocket;
-    private OutputStream out;
 
-    public RequestHandler(String request, Locations locations, AuthorizationCache authCache, Socket clientSocket,
-            OutputStream out) {
+    public RequestHandler(Locations locations, AuthorizationCache authCache) {
         this.authCache = authCache;
         this.locations = locations;
-        this.clientSocket = clientSocket;
-        this.out = out;
     }
 
     /**
      * For STDIN
-     * 
+     *
      * @param fields
      * @param request
      * @return the error response or empty string "" if the request is valid
      */
-    public String readRequest(Hashtable<String, String> fields, String request, List<Byte> buffer) {
+    public String readRequest(Hashtable<String, String> fields, String request, List<Byte> buffer, SocketChannel clientSocket) {
         this.parseHeaders(fields, request);
         String valid = this.isValid(fields);
+
         if (valid.length() != 0) {
             return valid;
         }
 
-        return this.readFile(fields, buffer);
+        return this.readFile(fields, buffer, clientSocket);
     }
 
-    public void writeResponse(Hashtable<String, String> fields, String method, List<Byte> response, SocketHandler socketHandler) {
+    public void writeResponse(Hashtable<String, String> fields, String method, List<Byte> response, SocketChannel client) {
         if (method.equals("GET")) {
             byte[] responseBytes = new byte[response.size()];
             for (int i = 0; i < response.size(); i++) {
                 responseBytes[i] = response.get(i);
             }
             try {
-                socketHandler.write(responseBytes);
+                client.write(ByteBuffer.wrap(responseBytes));
             } catch (IOException e) {
                 e.printStackTrace();
             }
         } else if (method.equals("POST")) {
-            this.writePostResponse(fields, socketHandler);
+            this.writePostResponse(fields, client);
         }
 
         byte[] defaultResponse = constructErrorResponse(400, "Bad Request").getBytes();
         try {
-            socketHandler.write(defaultResponse);
+            client.write(ByteBuffer.wrap(defaultResponse));
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -84,7 +83,7 @@ public class RequestHandler {
 
     /**
      * Parses the headers and inserts them into the provided hashtable pointer
-     * 
+     *
      * @param fields
      * @param request
      */
@@ -101,33 +100,33 @@ public class RequestHandler {
             // If it's the method header
             if (lineSplit.length < 2) {
                 lineSplit = line.split(" ");
-                this.fields.put("Method", lineSplit[0]);
-                this.fields.put("Path", lineSplit[1]);
-                this.fields.put("Version", lineSplit[2]);
+                fields.put("Method", lineSplit[0]);
+                fields.put("Path", lineSplit[1]);
+                fields.put("Version", lineSplit[2]);
             }
             // Otherwise use header's field name
             else {
-                this.fields.put(lineSplit[0].trim(), lineSplit[1].trim());
+                fields.put(lineSplit[0].trim(), lineSplit[1].trim());
             }
         }
 
         // Read body into hash table
         if (sections.length > 1) {
-            this.fields.put("Body", sections[1]);
+            fields.put("Body", sections[1]);
         }
 
         // Print out the hash table
-        for (String key : this.fields.keySet()) {
-            System.out.println(key + ": " + this.fields.get(key));
-        }
-        System.out.println();
+        // for (String key : fields.keySet()) {
+        //     System.out.println(key + ": " + fields.get(key));
+        // }
+        // System.out.println();
     }
 
     /**
      * Parses for viable fields/valid file path
      * if the file path is valid
      * add a key:value pair to the request hash table
-     * 
+     *
      * @return the error response or empty string "" if the request is valid
      */
     private String isValid(Hashtable<String, String> fields) {
@@ -197,7 +196,7 @@ public class RequestHandler {
         return "";
     }
 
-    private String readFile(Hashtable<String, String> fields, List<Byte> buffer) {
+    private String readFile(Hashtable<String, String> fields, List<Byte> buffer, SocketChannel client) {
         String filePath = fields.get("filePath");
         File f = new File(filePath);
         String contentType = "";
@@ -279,8 +278,8 @@ public class RequestHandler {
                 Map<String, String> env = pb.environment();
                 env.clear();
                 env.put("QUERY_STRING", queryString);
-                env.put("REMOTE_ADDR", this.clientSocket.getInetAddress().toString().replace("/", ""));
-                env.put("REMOTE_HOST", this.clientSocket.getInetAddress().getCanonicalHostName());
+                env.put("REMOTE_ADDR", ((InetSocketAddress) (client.getRemoteAddress())).toString().replace("/", ""));
+                env.put("REMOTE_HOST", ((InetSocketAddress) (client.getRemoteAddress())).getHostName());
                 env.put("REQUEST_METHOD", this.fields.get("Method"));
                 env.put("SERVER_NAME", this.fields.get("Host").split(":")[0]);
                 env.put("SERVER_PORT", this.fields.get("Host").split(":")[1]);
@@ -333,7 +332,7 @@ public class RequestHandler {
                         "Last-Modified: " + lastModified + "\r\n" +
                         "Content-Length: " + responseLength + "\r\n" +
                         responseBody).getBytes();
-                
+
                 for (byte b : response) {
                     buffer.add(b);
                 }
@@ -402,7 +401,7 @@ public class RequestHandler {
                         "Content-Length: " + responseLength + "\r\n" +
                         "\r\n" +
                         responseBody).getBytes();
-                
+
                 for (byte b : response) {
                     buffer.add(b);
                 }
@@ -417,7 +416,7 @@ public class RequestHandler {
         }
     }
 
-    private void writePostResponse(Hashtable<String, String> fields, SocketHandler socketHandler) {
+    private void writePostResponse(Hashtable<String, String> fields, SocketChannel client) {
         String filePath = fields.get("filePath");
         File f = new File(filePath);
         String responseBody = "";
@@ -429,7 +428,7 @@ public class RequestHandler {
             String extension = fileParts[fileParts.length - 1];
             if (!extension.matches("cgi|pl")) {
                 System.out.println("Extension not recognized.");
-                socketHandler.write(constructErrorResponse(403, "Forbidden").getBytes());
+                client.write(ByteBuffer.wrap(constructErrorResponse(403, "Forbidden").getBytes()));
             }
             BufferedReader in = new BufferedReader(new FileReader(filePath));
             String line = in.readLine();
@@ -445,8 +444,8 @@ public class RequestHandler {
             Map<String, String> env = pb.environment();
             env.clear();
             env.put("QUERY_STRING", "");
-            env.put("REMOTE_ADDR", socketHandler.getClientAddress());
-            env.put("REMOTE_HOST", socketHandler.getClientHost());
+            env.put("REMOTE_ADDR", ((InetSocketAddress) (client.getRemoteAddress())).toString().replace("/", ""));
+            env.put("REMOTE_HOST", ((InetSocketAddress) (client.getRemoteAddress())).getHostName());
             env.put("REQUEST_METHOD", fields.get("Method"));
             env.put("SERVER_NAME", fields.get("Host").split(":")[0]);
             env.put("SERVER_PORT", fields.get("Host").split(":")[1]);
@@ -477,19 +476,19 @@ public class RequestHandler {
                         "Last-Modified: " + lastModified + "\r\n" +
                         "Transfer-Encoding: chunked\r\n" +
                         content_type;
-                
-                socketHandler.write((chunked_response).getBytes());
-                        
+
+                client.write(ByteBuffer.wrap((chunked_response).getBytes()));
+
                 while ((proc_line = process_in.readLine()) != null) {
                     if (proc_line.length() == 0) {
                         continue;
                     }
-                    socketHandler.write(
-                            (Integer.toHexString((proc_line.length())) + "\r\n" +
-                                    proc_line + "\r\n").getBytes());
+                    client.write(
+                            ByteBuffer.wrap((Integer.toHexString((proc_line.length())) + "\r\n" +
+                                    proc_line + "\r\n").getBytes()));
                 }
 
-                socketHandler.write(("0\r\n\r\n").getBytes());
+                client.write(ByteBuffer.wrap(("0\r\n\r\n").getBytes()));
             } else {
                 int process_char;
                 int count = 0;
@@ -517,21 +516,21 @@ public class RequestHandler {
 
                 try {
                     if (process.waitFor() != 0) {
-                        socketHandler.write(constructErrorResponse(400, "Bad Request").getBytes());
+                        client.write(ByteBuffer.wrap(constructErrorResponse(400, "Bad Request").getBytes()));
                     }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
-                    socketHandler.write(constructErrorResponse(400, "Bad Request").getBytes());
+                    client.write(ByteBuffer.wrap(constructErrorResponse(400, "Bad Request").getBytes()));
                 }
 
                 responseLength = Integer.toString(responseBody.length() - count - 3);
 
-                socketHandler.write(("HTTP/1.1 200 OK\r\n" +
+                client.write(ByteBuffer.wrap(("HTTP/1.1 200 OK\r\n" +
                         "Date: " + new Date() + "\r\n" +
                         "Server: JZAS Server\r\n" +
                         "Last-Modified: " + lastModified + "\r\n" +
                         "Content-Length: " + responseLength + "\r\n" +
-                        responseBody).getBytes());
+                        responseBody).getBytes()));
 
             }
 
@@ -635,7 +634,7 @@ public class RequestHandler {
 
     /**
      * Tests to see if the path tries to go out of bounds
-     * 
+     *
      * @param filepath
      * @return null if the path tries to go out of bounds, or the normalized path if
      *         the path is viable

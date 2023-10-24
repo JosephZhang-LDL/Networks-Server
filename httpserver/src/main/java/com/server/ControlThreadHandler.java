@@ -3,7 +3,7 @@ package com.server;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.ServerSocket;
+import java.nio.channels.ServerSocketChannel;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -12,11 +12,11 @@ public class ControlThreadHandler implements Runnable {
     private volatile boolean running;
     BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
     private String line;
-    private ServerSocket serverSocket;
+    private ServerSocketChannel serverSocket;
     private static final int THREAD_POOL_SIZE = 10;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
 
-    public ControlThreadHandler(ServerSocket serverSocket) {
+    public ControlThreadHandler(ServerSocketChannel serverSocket) {
         this.serverSocket = serverSocket;
     }
 
@@ -38,7 +38,7 @@ public class ControlThreadHandler implements Runnable {
             serverSocket.close();
         } catch (InterruptedException e) {
             // Cancel all running tasks
-            threadPool.shutdownNow(); 
+            threadPool.shutdownNow();
             Thread.currentThread().interrupt();
         } catch (IOException e) {
             e.printStackTrace();

@@ -1,21 +1,36 @@
 package com.server;
 
+import java.util.List;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Hashtable;
+import java.util.Iterator;
+import java.util.Set;
 
 public class SocketHandler implements Runnable {
     private Socket clientSocket;
     private Locations locations;
     private AuthorizationCache authorizationCache;
+    private Selector selector;
+    private RequestHandler handler;
 
-    public SocketHandler(Socket socket, Locations locations, AuthorizationCache authorizationCache) {
-        this.clientSocket = socket;
+    public SocketHandler(Selector selector, Locations locations, AuthorizationCache authorizationCache,
+            RequestHandler handler) {
+        this.selector = selector;
         this.locations = locations;
         this.authorizationCache = authorizationCache;
+        this.handler = handler;
     }
 
     public String errorResponse(Exception e) {
@@ -23,70 +38,138 @@ public class SocketHandler implements Runnable {
     }
 
     public void run() {
-        InputStream in = null;
-        OutputStream out = null;
-        System.out.println(Thread.currentThread().getName());
+        Hashtable<String, String> fields = new Hashtable<String, String>();
+        List<Byte> responseBuffer = new ArrayList<Byte>();
 
         try {
-            clientSocket.setSoTimeout(3000);
-            in = clientSocket.getInputStream();
-            out = clientSocket.getOutputStream();
-
-            // Write input stream into a byte buffer array
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-            byte[] byteBuffer = new byte[1024];
-            int bytesRead;
-            boolean headerComplete = false;
-            while ((bytesRead = in.read(byteBuffer)) != -1) {
-                buffer.write(byteBuffer, 0, bytesRead);
-                if (containsEndOfHeader(buffer.toByteArray())) {
-                    headerComplete = true;
-                    break;
+            while (true) {
+                int readyCount = selector.select();
+                if (readyCount == 0) {
+                    continue;
                 }
-            }
 
-            // If header is complete, parse it and send a response
-            if (headerComplete) {
-                byte[] rawHeader = buffer.toByteArray();
-                String header = new String(rawHeader, "UTF-8");
-                RequestHandler handler = new RequestHandler(header, locations, authorizationCache, clientSocket, out);
-                byte[] responseString = handler.getResponse();
-                out.write(responseString);
-            } else {
-                out.write(this.errorResponse(new Exception("Incomplete header")).getBytes());
-            }
+                Set<SelectionKey> readyKeys = selector.selectedKeys();
+                Iterator<SelectionKey> iterator = readyKeys.iterator();
 
-        } catch (SocketTimeoutException ste) {
-            System.out.println("Connection timed out, closing socket.");
-            try {
-                clientSocket.close();
-            } catch (IOException e) {
-                e.printStackTrace();
+                while (iterator.hasNext()) {
+                    SelectionKey key = iterator.next();
+
+                    iterator.remove();
+                    System.out.println(key.isAcceptable());
+                    System.out.println(key.isReadable());
+                    System.out.println(key.isWritable());
+                    System.out.println();
+
+                    if (key.isAcceptable()) {
+                        ServerSocketChannel server = (ServerSocketChannel) key.channel();
+                        SocketChannel client = server.accept();
+                        client.configureBlocking(false);
+                        client.register(selector, SelectionKey.OP_READ);
+                        // client.register(selector, SelectionKey.OP_WRITE);
+                    }
+
+                    if (key.isReadable()) {
+
+                        SocketChannel client = (SocketChannel) key.channel();
+
+                        int BUFFER_SIZE = 1024;
+                        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
+
+                        try {
+                            client.read(buffer);
+                            handler.readRequest(fields, new String(buffer.array(), "UTF-8"),
+                                    responseBuffer, client);
+
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                            continue;
+                        }
+                        client.register(selector, SelectionKey.OP_WRITE);
+                    }
+
+                    if (key.isWritable()) {
+                        SocketChannel client = (SocketChannel) key.channel();
+
+                        handler.writeResponse(fields, fields.get("Method"), responseBuffer, client);
+
+                        if (fields.containsKey("Connection") && fields.get("Connection").equals("close")) {
+                            client.close();
+                        } else {
+                            client.register(selector, SelectionKey.OP_ACCEPT);
+                        }
+
+                    }
+                }
             }
         } catch (IOException e) {
-            try {
-                e.printStackTrace();
-                if (out != null) {
-                    out.write(this.errorResponse(e).getBytes());
-                }
-            } catch (IOException e2) {
-                e.printStackTrace();
-                throw new RuntimeException(e2);
-            }
-        } finally {
-            try {
-                if (out != null) {
-                    out.close();
-                }
-                if (in != null) {
-                    in.close();
-                }
-                this.clientSocket.close();
-                return;
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            e.printStackTrace();
         }
+
+        // InputStream in = null;
+        // OutputStream out = null;
+        // System.out.println(Thread.currentThread().getName());
+
+        // try {
+        // clientSocket.setSoTimeout(3000);
+        // in = clientSocket.getInputStream();
+        // out = clientSocket.getOutputStream();
+
+        // // Write input stream into a byte buffer array
+        // ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        // byte[] byteBuffer = new byte[1024];
+        // int bytesRead;
+        // boolean headerComplete = false;
+        // while ((bytesRead = in.read(byteBuffer)) != -1) {
+        // buffer.write(byteBuffer, 0, bytesRead);
+        // if (containsEndOfHeader(buffer.toByteArray())) {
+        // headerComplete = true;
+        // break;
+        // }
+        // }
+
+        // // If header is complete, parse it and send a response
+        // if (headerComplete) {
+        // byte[] rawHeader = buffer.toByteArray();
+        // String header = new String(rawHeader, "UTF-8");
+        // RequestHandler handler = new RequestHandler(header, locations,
+        // authorizationCache, clientSocket, out);
+        // byte[] responseString = handler.getResponse();
+        // out.write(responseString);
+        // } else {
+        // out.write(this.errorResponse(new Exception("Incomplete header")).getBytes());
+        // }
+
+        // } catch (SocketTimeoutException ste) {
+        // System.out.println("Connection timed out, closing socket.");
+        // try {
+        // clientSocket.close();
+        // } catch (IOException e) {
+        // e.printStackTrace();
+        // }
+        // } catch (IOException e) {
+        // try {
+        // e.printStackTrace();
+        // if (out != null) {
+        // out.write(this.errorResponse(e).getBytes());
+        // }
+        // } catch (IOException e2) {
+        // e.printStackTrace();
+        // throw new RuntimeException(e2);
+        // }
+        // } finally {
+        // try {
+        // if (out != null) {
+        // out.close();
+        // }
+        // if (in != null) {
+        // in.close();
+        // }
+        // this.clientSocket.close();
+        // return;
+        // } catch (IOException e) {
+        // e.printStackTrace();
+        // }
+        // }
     }
 
     private boolean containsEndOfHeader(byte[] data) {
