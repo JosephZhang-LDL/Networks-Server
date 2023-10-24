@@ -46,7 +46,7 @@ public class SocketHandler implements Runnable {
 
         try {
             while (true) {
-                int readyCount = selector.select();
+                int readyCount = selector.select(3000);
                 if (readyCount == 0) {
                     continue;
                 }

@@ -110,6 +110,7 @@ Any client can ping this URI which will return a 200 signal if all server functi
 We use ExecutorService to maintain a threadpool for I/O tasks. We maintain the threadpool inside our `ControlThreadHandler`, where we can submit read or write tasks. In our current design, we maintain a pool of 10 threads that are picked based on Java's ExectuorService class to run our runnables.
 
 ## Async I/O Using Select Structure
+We currently have a select structure set up where the Selector will poll for keys. If a key is acceptable, it will connect to the server and be marked as readable. Then, if a key is readable, a new thread from the threadpool would take on the task of reading it before marking the key as writable. In this time, the async runnable task will be locked using synchronized over the fields the runnable is writing into. Finally, if a key is readable, a new thread from the threadpool would output in the same way before checking the Connection header to see if the socket should be closed or returned to a connect state.
 
 ## Performance and Benchmarking
 To benchmark our performance, we have used Apache Benchmark, as suggested. Our server performs with a transfer rate of [TRANSFER_RATE] after we remove the print to console we use for debugging.
@@ -123,7 +124,7 @@ We test our GET method in ways including testing:
     an invalid combination of headers indicating "Content-Type" and data.
     missing "Content-Type."
     missing files.
-
+...
 
 
 ## Best Throughput
