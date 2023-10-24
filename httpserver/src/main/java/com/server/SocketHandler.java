@@ -42,7 +42,7 @@ public class SocketHandler implements Runnable {
     public void run() {
         Hashtable<String, String> fields = new Hashtable<String, String>();
         List<Byte> responseBuffer = new ArrayList<Byte>();
-        final Object lock = new Object();
+        SelectionKey serverKey = null;
 
         try {
             while (true) {
@@ -60,7 +60,9 @@ public class SocketHandler implements Runnable {
                     iterator.remove();
 
                     if (key.isAcceptable()) {
+                        serverKey = key;
                         ServerSocketChannel server = (ServerSocketChannel) key.channel();
+
                         SocketChannel client = server.accept();
                         client.configureBlocking(false);
                         client.register(selector, SelectionKey.OP_READ);
@@ -80,7 +82,7 @@ public class SocketHandler implements Runnable {
                             // handler.readRequest(fields, new String(buffer.array(), "UTF-8"),
                             // responseBuffer, client);
                             ReadRunnable readRunnable = new ReadRunnable(fields, responseBuffer, client, buffer,
-                                    handler, lock);
+                                    handler);
                             threadpool.submit(readRunnable);
 
                             buffer.clear();
@@ -96,7 +98,7 @@ public class SocketHandler implements Runnable {
                         SocketChannel client = (SocketChannel) key.channel();
 
                         // handler.writeResponse(fields, fields.get("Method"), responseBuffer, client);
-                        WriteRunnable writeRunnable = new WriteRunnable(fields, responseBuffer, client, handler, lock);
+                        WriteRunnable writeRunnable = new WriteRunnable(fields, responseBuffer, client, handler, serverKey);
                         threadpool.submit(writeRunnable);
 
                         if (fields.containsKey("Connection") && fields.get("Connection").equals("close")) {

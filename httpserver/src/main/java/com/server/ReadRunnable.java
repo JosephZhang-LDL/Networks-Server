@@ -12,20 +12,17 @@ public class ReadRunnable implements Runnable {
     SocketChannel client;
     ByteBuffer buffer;
     RequestHandler handler;
-    private final Object lock;
 
     public ReadRunnable(Hashtable<String, String> fields,
             List<Byte> responseBuffer,
             SocketChannel client,
             ByteBuffer buffer,
-            RequestHandler handler,
-            Object lock) {
+            RequestHandler handler) {
         this.fields = fields;
         this.responseBuffer = responseBuffer;
         this.client = client;
         this.buffer = buffer;
         this.handler = handler;
-        this.lock = lock;
     }
 
     public void run() {

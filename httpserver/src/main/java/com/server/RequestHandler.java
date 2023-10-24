@@ -14,6 +14,7 @@ import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
@@ -72,10 +73,24 @@ public class RequestHandler {
     }
 
 
-    public void writeResponse(Hashtable<String, String> fields, String method, List<Byte> response, SocketChannel client) {
+    public void writeResponse(Hashtable<String, String> fields, String method, List<Byte> response, SocketChannel client, SelectionKey key) {
         if (fields.get("Path").equals("/heartbeat")){
             try {
                 client.write(ByteBuffer.wrap(constructErrorResponse(200, "OK").getBytes()));
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        if (fields.get("Path").equals("/load")) {
+            try {
+                if (key.isAcceptable()) {
+                    client.write(ByteBuffer.wrap(constructErrorResponse(200, "OK").getBytes()));
+                } else {
+                    client.write(ByteBuffer.wrap(constructErrorResponse(503, "Service Unavailable").getBytes()));
+                }
+
             }
             catch (IOException e) {
                 e.printStackTrace();
