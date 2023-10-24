@@ -24,13 +24,15 @@ public class SocketHandler implements Runnable {
     private AuthorizationCache authorizationCache;
     private Selector selector;
     private RequestHandler handler;
+    private ControlThreadHandler threadpool;
 
     public SocketHandler(Selector selector, Locations locations, AuthorizationCache authorizationCache,
-            RequestHandler handler) {
+            RequestHandler handler, ControlThreadHandler controlThreadHandler) {
         this.selector = selector;
         this.locations = locations;
         this.authorizationCache = authorizationCache;
         this.handler = handler;
+        this.threadpool = controlThreadHandler;
     }
 
     public String errorResponse(Exception e) {
@@ -55,10 +57,10 @@ public class SocketHandler implements Runnable {
                     SelectionKey key = iterator.next();
 
                     iterator.remove();
-                    System.out.println(key.isAcceptable());
-                    System.out.println(key.isReadable());
-                    System.out.println(key.isWritable());
-                    System.out.println();
+                    // System.out.println(key.isAcceptable());
+                    // System.out.println(key.isReadable());
+                    // System.out.println(key.isWritable());
+                    // System.out.println();
 
                     if (key.isAcceptable()) {
                         ServerSocketChannel server = (ServerSocketChannel) key.channel();
@@ -77,8 +79,11 @@ public class SocketHandler implements Runnable {
 
                         try {
                             client.read(buffer);
+                            System.out.println(new String(buffer.array(), "UTF-8"));
+
                             handler.readRequest(fields, new String(buffer.array(), "UTF-8"),
                                     responseBuffer, client);
+                            buffer.clear();
 
                         } catch (IOException e) {
                             e.printStackTrace();
@@ -91,12 +96,15 @@ public class SocketHandler implements Runnable {
                         SocketChannel client = (SocketChannel) key.channel();
 
                         handler.writeResponse(fields, fields.get("Method"), responseBuffer, client);
+                        responseBuffer.clear();
+                        fields.clear();
 
                         if (fields.containsKey("Connection") && fields.get("Connection").equals("close")) {
                             client.close();
                         } else {
-                            client.register(selector, SelectionKey.OP_ACCEPT);
+                            client.register(selector, SelectionKey.OP_CONNECT);
                         }
+                        // client.close();
 
                     }
                 }

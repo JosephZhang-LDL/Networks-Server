@@ -53,7 +53,7 @@ public final class App {
 
         RequestHandler requestHandler = new RequestHandler(locations, authorizationCache);
 
-        SocketHandler handler = new SocketHandler(selector, locations, authorizationCache, requestHandler);
+        SocketHandler handler = new SocketHandler(selector, locations, authorizationCache, requestHandler, controlThreadHandler);
 
         controlThreadHandler.submit(handler);
 
