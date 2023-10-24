@@ -57,10 +57,6 @@ public class SocketHandler implements Runnable {
                     SelectionKey key = iterator.next();
 
                     iterator.remove();
-                    // System.out.println(key.isAcceptable());
-                    // System.out.println(key.isReadable());
-                    // System.out.println(key.isWritable());
-                    // System.out.println();
 
                     if (key.isAcceptable()) {
                         ServerSocketChannel server = (ServerSocketChannel) key.channel();
@@ -81,8 +77,13 @@ public class SocketHandler implements Runnable {
                             client.read(buffer);
                             System.out.println(new String(buffer.array(), "UTF-8"));
 
-                            handler.readRequest(fields, new String(buffer.array(), "UTF-8"),
-                                    responseBuffer, client);
+                            // handler.readRequest(fields, new String(buffer.array(), "UTF-8"),
+                            //         responseBuffer, client);
+                            ReadRunnable readRunnable = new ReadRunnable(fields, responseBuffer, client, buffer, handler);
+                            threadpool.submit(readRunnable);
+
+                            System.out.println(fields.toString());
+
                             buffer.clear();
 
                         } catch (IOException e) {
@@ -95,7 +96,10 @@ public class SocketHandler implements Runnable {
                     if (key.isWritable()) {
                         SocketChannel client = (SocketChannel) key.channel();
 
-                        handler.writeResponse(fields, fields.get("Method"), responseBuffer, client);
+                        // handler.writeResponse(fields, fields.get("Method"), responseBuffer, client);
+                        WriteRunnable writeRunnable = new WriteRunnable(fields, responseBuffer, client, handler);
+                        threadpool.submit(writeRunnable);
+
                         responseBuffer.clear();
                         fields.clear();
 
