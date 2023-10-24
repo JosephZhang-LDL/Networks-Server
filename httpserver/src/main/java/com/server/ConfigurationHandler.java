@@ -12,6 +12,7 @@ public class ConfigurationHandler {
     private String mainServerName = "";
     private String mainDocumentRoot = "";
     private ArrayList<String[]> virtualHosts = new ArrayList<String[]>();
+    private int nSelectLoops = 1;
 
     public int getPort() {
         return this.port;
@@ -27,6 +28,10 @@ public class ConfigurationHandler {
 
     public ArrayList<String[]> getVirtualHosts() {
         return this.virtualHosts;
+    }
+
+    public int getNSelectLoops() {
+        return this.nSelectLoops;
     }
 
     public void parseConfigFile() {
@@ -46,6 +51,9 @@ public class ConfigurationHandler {
                     catch (NumberFormatException e){
                         // do nothing i.e. port will remain negative
                     }
+                }
+                else if (words[0].equals("nSelectLoops")) {
+                    this.nSelectLoops = Integer.parseInt(words[1]);
                 }
                 else if (words[0].equals("ServerName")) {
                     this.mainServerName = words[1];

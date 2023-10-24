@@ -53,9 +53,11 @@ public final class App {
 
         RequestHandler requestHandler = new RequestHandler(locations, authorizationCache);
 
-        SocketHandler handler = new SocketHandler(selector, locations, authorizationCache, requestHandler, controlThreadHandler);
+        for (int i=0; i < configurationHandler.getNSelectLoops(); i++) {
+            SocketHandler handler = new SocketHandler(selector, locations, authorizationCache, requestHandler, controlThreadHandler);
+            controlThreadHandler.submit(handler);
+        }
 
-        controlThreadHandler.submit(handler);
 
         // SocketHandler[] socketHandlerArray = new SocketHandler[nSelectLoops];
         // for (int i=0; i < nSelectLoops; i++){

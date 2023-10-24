@@ -13,7 +13,7 @@ public class ControlThreadHandler implements Runnable {
     BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
     private String line;
     private ServerSocketChannel serverSocket;
-    private static final int THREAD_POOL_SIZE = 10;
+    private static final int THREAD_POOL_SIZE = 15;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
 
     public ControlThreadHandler(ServerSocketChannel serverSocket) {

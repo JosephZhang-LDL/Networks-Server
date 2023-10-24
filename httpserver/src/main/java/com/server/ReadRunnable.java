@@ -29,14 +29,15 @@ public class ReadRunnable implements Runnable {
     }
 
     public void run() {
-        synchronized (lock) {
-            try {
-                handler.readRequest(this.fields, new String(buffer.array(), "UTF-8"),
-                        responseBuffer, client);
-            } catch (UnsupportedEncodingException e) {
-                e.printStackTrace();
+        synchronized (fields) {
+            synchronized (responseBuffer) {
+                try {
+                    handler.readRequest(this.fields, new String(buffer.array(), "UTF-8"),
+                            responseBuffer, client);
+                } catch (UnsupportedEncodingException e) {
+                    e.printStackTrace();
+                }
             }
-            System.out.println(this.fields.toString());
         }
 
     }

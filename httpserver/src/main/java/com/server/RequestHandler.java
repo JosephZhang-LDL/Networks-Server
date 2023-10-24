@@ -66,11 +66,13 @@ public class RequestHandler {
             }
             try {
                 client.write(ByteBuffer.wrap(responseBytes));
+                return;
             } catch (IOException e) {
                 e.printStackTrace();
             }
         } else if (method.equals("POST")) {
             this.writePostResponse(fields, client);
+            return;
         }
 
         byte[] defaultResponse = constructErrorResponse(400, "Bad Request").getBytes();
@@ -524,6 +526,13 @@ public class RequestHandler {
                 }
 
                 responseLength = Integer.toString(responseBody.length() - count - 3);
+
+                System.out.println(("HTTP/1.1 200 OK\r\n" +
+                        "Date: " + new Date() + "\r\n" +
+                        "Server: JZAS Server\r\n" +
+                        "Last-Modified: " + lastModified + "\r\n" +
+                        "Content-Length: " + responseLength + "\r\n" +
+                        responseBody));
 
                 client.write(ByteBuffer.wrap(("HTTP/1.1 200 OK\r\n" +
                         "Date: " + new Date() + "\r\n" +

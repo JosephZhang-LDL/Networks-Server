@@ -1,4 +1,5 @@
 Listen 8080
+nSelectLoops 3
 
 <VirtualHost *:80>
     DocumentRoot "SampleSite"

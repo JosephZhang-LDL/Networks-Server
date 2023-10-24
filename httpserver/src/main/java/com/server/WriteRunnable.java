@@ -1,5 +1,6 @@
 package com.server;
 
+import java.io.IOException;
 import java.nio.channels.SocketChannel;
 import java.util.List;
 import java.util.Hashtable;
@@ -24,9 +25,13 @@ public class WriteRunnable implements Runnable {
     }
 
     public void run() {
-        synchronized (lock) {
-            System.out.println(fields.toString());
-            handler.writeResponse(fields, fields.get("Method"), responseBuffer, client);
+        synchronized (fields) {
+            synchronized (responseBuffer) {
+                handler.writeResponse(fields, fields.get("Method"), responseBuffer, client);
+
+                responseBuffer.clear();
+                fields.clear();
+            }
         }
 
     }

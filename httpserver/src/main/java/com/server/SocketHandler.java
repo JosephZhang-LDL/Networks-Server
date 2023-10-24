@@ -42,7 +42,7 @@ public class SocketHandler implements Runnable {
     public void run() {
         Hashtable<String, String> fields = new Hashtable<String, String>();
         List<Byte> responseBuffer = new ArrayList<Byte>();
-        Object lock = new Object();
+        final Object lock = new Object();
 
         try {
             while (true) {
@@ -76,7 +76,6 @@ public class SocketHandler implements Runnable {
 
                         try {
                             client.read(buffer);
-                            System.out.println(new String(buffer.array(), "UTF-8"));
 
                             // handler.readRequest(fields, new String(buffer.array(), "UTF-8"),
                             // responseBuffer, client);
@@ -100,15 +99,12 @@ public class SocketHandler implements Runnable {
                         WriteRunnable writeRunnable = new WriteRunnable(fields, responseBuffer, client, handler, lock);
                         threadpool.submit(writeRunnable);
 
-                        responseBuffer.clear();
-                        fields.clear();
-
-                        if (fields.containsKey("Connection") && fields.get("Connection").equals("close")) {
-                            client.close();
-                        } else {
-                            client.register(selector, SelectionKey.OP_CONNECT);
-                        }
-                        // client.close();
+                        // if (fields.containsKey("Connection") && fields.get("Connection").equals("close")) {
+                            // client.close();
+                        // } else {
+                            // client.register(selector, SelectionKey.OP_CONNECT);
+                        // }
+                        client.close();
 
                     }
                 }
