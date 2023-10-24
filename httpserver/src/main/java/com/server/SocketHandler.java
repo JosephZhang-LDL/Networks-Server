@@ -42,6 +42,7 @@ public class SocketHandler implements Runnable {
     public void run() {
         Hashtable<String, String> fields = new Hashtable<String, String>();
         List<Byte> responseBuffer = new ArrayList<Byte>();
+        Object lock = new Object();
 
         try {
             while (true) {
@@ -78,11 +79,10 @@ public class SocketHandler implements Runnable {
                             System.out.println(new String(buffer.array(), "UTF-8"));
 
                             // handler.readRequest(fields, new String(buffer.array(), "UTF-8"),
-                            //         responseBuffer, client);
-                            ReadRunnable readRunnable = new ReadRunnable(fields, responseBuffer, client, buffer, handler);
+                            // responseBuffer, client);
+                            ReadRunnable readRunnable = new ReadRunnable(fields, responseBuffer, client, buffer,
+                                    handler, lock);
                             threadpool.submit(readRunnable);
-
-                            System.out.println(fields.toString());
 
                             buffer.clear();
 
@@ -97,7 +97,7 @@ public class SocketHandler implements Runnable {
                         SocketChannel client = (SocketChannel) key.channel();
 
                         // handler.writeResponse(fields, fields.get("Method"), responseBuffer, client);
-                        WriteRunnable writeRunnable = new WriteRunnable(fields, responseBuffer, client, handler);
+                        WriteRunnable writeRunnable = new WriteRunnable(fields, responseBuffer, client, handler, lock);
                         threadpool.submit(writeRunnable);
 
                         responseBuffer.clear();
