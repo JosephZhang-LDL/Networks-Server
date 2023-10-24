@@ -17,6 +17,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
@@ -76,6 +77,15 @@ public class RequestHandler {
     public void writeResponse(Hashtable<String, String> fields, String method, List<Byte> response, SocketChannel client, SelectionKey key) {
         if (fields.get("Path").equals("/heartbeat")){
             try {
+                // tofix
+                List<Byte> buffer = new ArrayList<Byte>();
+                this.fields.put("Path", "/");
+                this.readFile(fields, buffer, client);
+                byte[] responseBytes = new byte[buffer.size()];
+                for (int i = 0; i < buffer.size(); i++) {
+                    responseBytes[i] = buffer.get(i);
+                }
+
                 client.write(ByteBuffer.wrap(constructErrorResponse(200, "OK").getBytes()));
             }
             catch (IOException e) {
