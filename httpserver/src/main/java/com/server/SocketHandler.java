@@ -99,12 +99,11 @@ public class SocketHandler implements Runnable {
                         WriteRunnable writeRunnable = new WriteRunnable(fields, responseBuffer, client, handler, lock);
                         threadpool.submit(writeRunnable);
 
-                        // if (fields.containsKey("Connection") && fields.get("Connection").equals("close")) {
-                            // client.close();
-                        // } else {
-                            // client.register(selector, SelectionKey.OP_CONNECT);
-                        // }
-                        client.close();
+                        if (fields.containsKey("Connection") && fields.get("Connection").equals("close")) {
+                            client.close();
+                        } else {
+                            client.register(selector, SelectionKey.OP_CONNECT);
+                        }
 
                     }
                 }
@@ -112,6 +111,46 @@ public class SocketHandler implements Runnable {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    private boolean containsEndOfHeader(byte[] data) {
+        byte[] CRLFCRLF = { 0x0D, 0x0A, 0x0D, 0x0A }; // represents '\r\n\r\n'
+        byte[] LFLF = { 0x0A, 0x0A }; // represents '\n\n'
+
+        return containsBytes(data, CRLFCRLF) || containsBytes(data, LFLF);
+    }
+
+    private boolean containsBytes(byte[] array, byte[] target) {
+        for (int i = 0; i < array.length - target.length + 1; i++) {
+            boolean found = true;
+            for (int j = 0; j < target.length; j++) {
+                if (array[i + j] != target[j]) {
+                    found = false;
+                    break;
+                }
+            }
+            if (found)
+                return true;
+        }
+        return false;
+    }
+
+    public void write(byte[] response) throws IOException {
+        OutputStream out = clientSocket.getOutputStream();
+        out.write(response);
+    }
+
+    public String getClientAddress() {
+        return clientSocket.getInetAddress().toString().replace("/", "");
+    }
+
+    public String getClientHost() {
+        return clientSocket.getInetAddress().getCanonicalHostName();
+    }
+}
+
+
+
 
         // InputStream in = null;
         // OutputStream out = null;
@@ -178,40 +217,3 @@ public class SocketHandler implements Runnable {
         // e.printStackTrace();
         // }
         // }
-    }
-
-    private boolean containsEndOfHeader(byte[] data) {
-        byte[] CRLFCRLF = { 0x0D, 0x0A, 0x0D, 0x0A }; // represents '\r\n\r\n'
-        byte[] LFLF = { 0x0A, 0x0A }; // represents '\n\n'
-
-        return containsBytes(data, CRLFCRLF) || containsBytes(data, LFLF);
-    }
-
-    private boolean containsBytes(byte[] array, byte[] target) {
-        for (int i = 0; i < array.length - target.length + 1; i++) {
-            boolean found = true;
-            for (int j = 0; j < target.length; j++) {
-                if (array[i + j] != target[j]) {
-                    found = false;
-                    break;
-                }
-            }
-            if (found)
-                return true;
-        }
-        return false;
-    }
-
-    public void write(byte[] response) throws IOException {
-        OutputStream out = clientSocket.getOutputStream();
-        out.write(response);
-    }
-
-    public String getClientAddress() {
-        return clientSocket.getInetAddress().toString().replace("/", "");
-    }
-
-    public String getClientHost() {
-        return clientSocket.getInetAddress().getCanonicalHostName();
-    }
-}

@@ -52,13 +52,36 @@ public class RequestHandler {
         String valid = this.isValid(fields);
 
         if (valid.length() != 0) {
+            byte[] response = valid.getBytes();
+            for (byte b : response) {
+                    buffer.add(b);
+            }
             return valid;
         }
 
-        return this.readFile(fields, buffer, clientSocket);
+        String finalResponse = this.readFile(fields, buffer, clientSocket);
+
+        if (finalResponse.length() != 0) {
+            byte[] response = finalResponse.getBytes();
+            for (byte b : response) {
+                    buffer.add(b);
+            }
+        }
+
+        return finalResponse;
     }
 
+
     public void writeResponse(Hashtable<String, String> fields, String method, List<Byte> response, SocketChannel client) {
+        if (fields.get("Path").equals("/heartbeat")){
+            try {
+                client.write(ByteBuffer.wrap(constructErrorResponse(200, "OK").getBytes()));
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
         if (method.equals("GET")) {
             byte[] responseBytes = new byte[response.size()];
             for (int i = 0; i < response.size(); i++) {
@@ -171,7 +194,7 @@ public class RequestHandler {
         }
 
         // EMPTY PATH CHECK
-        if (filePath.charAt(filePath.length() - 1) == '/') {
+        if (filePath.charAt(filePath.length() - 1) == '/' || new File(filePath).isDirectory()) {
             // check for mobile
             if (fields.get("User-Agent").matches(".*iPhone.*|.*android.*")) {
                 File f = new File(filePath + "index_m.html");
@@ -192,6 +215,7 @@ public class RequestHandler {
                 }
             }
         }
+
 
         fields.put("filePath", filePath);
 
@@ -558,6 +582,7 @@ public class RequestHandler {
         return ("HTTP/1.1 " + errorCode + " " + description + "\r\n" +
                 "Date: " + new Date() + "\r\n" +
                 "Server: JZAS Server\r\n" +
+                "Content-Length: 2\r\n" +
                 "\r\n\r\n");
     }
 
@@ -567,6 +592,7 @@ public class RequestHandler {
                 "Date: " + new Date() + "\r\n" +
                 "Server: JZAS Server\r\n" +
                 children + "\r\n" +
+                "Content-Length: 2\r\n" +
                 "\r\n\r\n");
     }
 
