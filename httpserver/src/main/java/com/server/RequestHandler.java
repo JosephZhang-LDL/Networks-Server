@@ -12,7 +12,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
@@ -40,6 +39,42 @@ public class RequestHandler {
     public RequestHandler(Locations locations, AuthorizationCache authCache) {
         this.authCache = authCache;
         this.locations = locations;
+    }
+
+    /**
+     * For STDIN
+     *
+     * @param fields
+     * @param request
+     * @return the error response or empty string "" if the request is valid
+     */
+    public List<Byte> readRequestNew(Hashtable<String, String> fields, String request, List<Byte> buffer, SocketChannel clientSocket) {
+        this.parseHeaders(fields, request);
+        String valid = this.isValid(fields);
+        List<Byte> responseBytes = new ArrayList<Byte>();
+
+        if (valid.length() != 0) {
+            byte[] response = valid.getBytes();
+            for (byte b : response) {
+                    buffer.add(b);
+            }
+            return responseBytes;
+        }
+
+        String finalResponse = this.readFile(fields, buffer, clientSocket);
+
+        if (finalResponse.length() != 0) {
+            byte[] response = finalResponse.getBytes();
+            for (byte b : response) {
+                    buffer.add(b);
+            }
+        }
+
+        for (int i = 0; i < buffer.size(); i++) {
+            responseBytes.add(buffer.get(i));
+        }
+
+        return responseBytes;
     }
 
     /**

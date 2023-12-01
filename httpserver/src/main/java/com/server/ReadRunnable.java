@@ -3,8 +3,8 @@ package com.server;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import java.util.List;
 import java.util.Hashtable;
+import java.util.List;
 
 public class ReadRunnable implements Runnable {
     Hashtable<String, String> fields;
@@ -29,7 +29,7 @@ public class ReadRunnable implements Runnable {
         synchronized (fields) {
             synchronized (responseBuffer) {
                 try {
-                    handler.readRequest(this.fields, new String(buffer.array(), "UTF-8"),
+                    List<Byte> res = handler.readRequestNew(this.fields, new String(buffer.array(), "UTF-8"),
                             responseBuffer, client);
                 } catch (UnsupportedEncodingException e) {
                     e.printStackTrace();

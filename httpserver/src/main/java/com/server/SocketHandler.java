@@ -1,21 +1,17 @@
 package com.server;
 
-import java.util.List;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
-import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 
 public class SocketHandler implements Runnable {
@@ -56,7 +52,6 @@ public class SocketHandler implements Runnable {
 
                 while (iterator.hasNext()) {
                     SelectionKey key = iterator.next();
-
                     iterator.remove();
 
                     if (key.isAcceptable()) {
@@ -66,11 +61,9 @@ public class SocketHandler implements Runnable {
                         SocketChannel client = server.accept();
                         client.configureBlocking(false);
                         client.register(selector, SelectionKey.OP_READ);
-                        // client.register(selector, SelectionKey.OP_WRITE);
                     }
 
                     if (key.isReadable()) {
-
                         SocketChannel client = (SocketChannel) key.channel();
 
                         int BUFFER_SIZE = 1024;
@@ -81,30 +74,34 @@ public class SocketHandler implements Runnable {
 
                             // handler.readRequest(fields, new String(buffer.array(), "UTF-8"),
                             // responseBuffer, client);
-                            ReadRunnable readRunnable = new ReadRunnable(fields, responseBuffer, client, buffer,
-                                    handler);
-                            threadpool.submit(readRunnable);
+                            //ReadRunnable readRunnable = new ReadRunnable(fields, responseBuffer, client, buffer,
+                            //        handler);
+                            //threadpool.submit(readRunnable);
 
+                            List<Byte> res = handler.readRequestNew(fields, new String(buffer.array(), "UTF-8"),
+                                    responseBuffer, client);
+                            key.attach(res);
+                            
                             buffer.clear();
-
+                            
                         } catch (IOException e) {
                             e.printStackTrace();
                             continue;
                         }
-                        client.register(selector, SelectionKey.OP_WRITE);
-                    }
-
-                    if (key.isWritable()) {
+                        key.interestOps(SelectionKey.OP_WRITE);
+                        //client.register(selector, SelectionKey.OP_WRITE);
+                    } else if (key.isWritable()) {
                         SocketChannel client = (SocketChannel) key.channel();
-
+                        List<Byte> res = (List<Byte>) key.attachment();
                         // handler.writeResponse(fields, fields.get("Method"), responseBuffer, client);
-                        WriteRunnable writeRunnable = new WriteRunnable(fields, responseBuffer, client, handler, serverKey);
+                        WriteRunnable writeRunnable = new WriteRunnable(fields, res, client, handler, serverKey);
                         threadpool.submit(writeRunnable);
 
                         if (fields.containsKey("Connection") && fields.get("Connection").equals("close")) {
                             client.close();
                         } else {
-                            client.register(selector, SelectionKey.OP_CONNECT);
+                            key.interestOps(SelectionKey.OP_READ);
+                            //client.register(selector, SelectionKey.OP_CONNECT);
                         }
 
                     }
@@ -150,72 +147,3 @@ public class SocketHandler implements Runnable {
         return clientSocket.getInetAddress().getCanonicalHostName();
     }
 }
-
-
-
-
-        // InputStream in = null;
-        // OutputStream out = null;
-        // System.out.println(Thread.currentThread().getName());
-
-        // try {
-        // clientSocket.setSoTimeout(3000);
-        // in = clientSocket.getInputStream();
-        // out = clientSocket.getOutputStream();
-
-        // // Write input stream into a byte buffer array
-        // ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        // byte[] byteBuffer = new byte[1024];
-        // int bytesRead;
-        // boolean headerComplete = false;
-        // while ((bytesRead = in.read(byteBuffer)) != -1) {
-        // buffer.write(byteBuffer, 0, bytesRead);
-        // if (containsEndOfHeader(buffer.toByteArray())) {
-        // headerComplete = true;
-        // break;
-        // }
-        // }
-
-        // // If header is complete, parse it and send a response
-        // if (headerComplete) {
-        // byte[] rawHeader = buffer.toByteArray();
-        // String header = new String(rawHeader, "UTF-8");
-        // RequestHandler handler = new RequestHandler(header, locations,
-        // authorizationCache, clientSocket, out);
-        // byte[] responseString = handler.getResponse();
-        // out.write(responseString);
-        // } else {
-        // out.write(this.errorResponse(new Exception("Incomplete header")).getBytes());
-        // }
-
-        // } catch (SocketTimeoutException ste) {
-        // System.out.println("Connection timed out, closing socket.");
-        // try {
-        // clientSocket.close();
-        // } catch (IOException e) {
-        // e.printStackTrace();
-        // }
-        // } catch (IOException e) {
-        // try {
-        // e.printStackTrace();
-        // if (out != null) {
-        // out.write(this.errorResponse(e).getBytes());
-        // }
-        // } catch (IOException e2) {
-        // e.printStackTrace();
-        // throw new RuntimeException(e2);
-        // }
-        // } finally {
-        // try {
-        // if (out != null) {
-        // out.close();
-        // }
-        // if (in != null) {
-        // in.close();
-        // }
-        // this.clientSocket.close();
-        // return;
-        // } catch (IOException e) {
-        // e.printStackTrace();
-        // }
-        // }
