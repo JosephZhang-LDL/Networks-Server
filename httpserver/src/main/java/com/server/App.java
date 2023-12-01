@@ -44,10 +44,8 @@ public final class App {
         Thread controlThread = new Thread(controlThreadHandler);
         controlThread.start();
 
-        RequestHandler requestHandler = new RequestHandler(locations, authorizationCache);
-
         for (int i=0; i < configurationHandler.getNSelectLoops(); i++) {
-            SocketHandler handler = new SocketHandler(selector, locations, authorizationCache, requestHandler, controlThreadHandler);
+            SocketHandler handler = new SocketHandler(selector, locations, authorizationCache, controlThreadHandler);
             controlThreadHandler.submit(handler);
         }
     }

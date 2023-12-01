@@ -35,10 +35,12 @@ public class RequestHandler {
     private Hashtable<String, String> fields = new Hashtable<String, String>();
     private AuthorizationCache authCache = new AuthorizationCache();
     private Locations locations = null;
+    private List<Byte> finalResponse;
 
     public RequestHandler(Locations locations, AuthorizationCache authCache) {
         this.authCache = authCache;
         this.locations = locations;
+        this.finalResponse = new ArrayList<Byte>();
     }
 
     /**
@@ -48,30 +50,31 @@ public class RequestHandler {
      * @param request
      * @return the error response or empty string "" if the request is valid
      */
-    public List<Byte> readRequestNew(Hashtable<String, String> fields, String request, List<Byte> buffer, SocketChannel clientSocket) {
-        this.parseHeaders(fields, request);
-        String valid = this.isValid(fields);
+    public List<Byte> readRequestNew(String request, SocketChannel clientSocket) {
+        this.parseHeaders(this.fields, request);
+        String valid = this.isValid(this.fields);
         List<Byte> responseBytes = new ArrayList<Byte>();
-
+        
         if (valid.length() != 0) {
             byte[] response = valid.getBytes();
             for (byte b : response) {
-                    buffer.add(b);
+                responseBytes.add(b);
             }
             return responseBytes;
         }
-
-        String finalResponse = this.readFile(fields, buffer, clientSocket);
-
+        
+        String finalResponse = this.readFile(fields, responseBytes, clientSocket);
+        
         if (finalResponse.length() != 0) {
             byte[] response = finalResponse.getBytes();
             for (byte b : response) {
-                    buffer.add(b);
+                responseBytes.add(b);
             }
         }
-
-        for (int i = 0; i < buffer.size(); i++) {
-            responseBytes.add(buffer.get(i));
+        
+        // copy response bytes into final response
+        for (byte b : responseBytes) {
+            this.finalResponse.add(b);
         }
 
         return responseBytes;
@@ -108,6 +111,70 @@ public class RequestHandler {
         return finalResponse;
     }
 
+    public void writeResponseNew(SocketChannel client, SelectionKey key) {
+        String method = fields.get("Method");
+        List<Byte> response = this.finalResponse;
+
+        if (fields.get("Path").equals("/heartbeat")){
+            try {
+                // tofix
+                List<Byte> buffer = new ArrayList<Byte>();
+                this.fields.put("Path", "/");
+                this.readFile(fields, buffer, client);
+                byte[] responseBytes = new byte[buffer.size()];
+                for (int i = 0; i < buffer.size(); i++) {
+                    responseBytes[i] = buffer.get(i);
+                }
+
+                client.write(ByteBuffer.wrap(constructErrorResponse(200, "OK").getBytes()));
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        if (fields.get("Path").equals("/load")) {
+            try {
+                if (key.isAcceptable()) {
+                    client.write(ByteBuffer.wrap(constructErrorResponse(200, "OK").getBytes()));
+                } else {
+                    client.write(ByteBuffer.wrap(constructErrorResponse(503, "Service Unavailable").getBytes()));
+                }
+
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        if (method.equals("GET")) {
+            try {
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            byte[] responseBytes = new byte[response.size()];
+            for (int i = 0; i < response.size(); i++) {
+                responseBytes[i] = response.get(i);
+            }
+            try {
+                client.write(ByteBuffer.wrap(responseBytes));
+                return;
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return;
+        } else if (method.equals("POST")) {
+            this.writePostResponse(fields, client);
+            return;
+        }
+        
+        byte[] defaultResponse = constructErrorResponse(400, "Bad Request").getBytes();
+        try {
+            client.write(ByteBuffer.wrap(defaultResponse));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
     public void writeResponse(Hashtable<String, String> fields, String method, List<Byte> response, SocketChannel client, SelectionKey key) {
         if (fields.get("Path").equals("/heartbeat")){
@@ -147,17 +214,20 @@ public class RequestHandler {
             for (int i = 0; i < response.size(); i++) {
                 responseBytes[i] = response.get(i);
             }
+            //System.out.println("Writing response");
+            //System.out.println(responseBytes.length);
             try {
                 client.write(ByteBuffer.wrap(responseBytes));
                 return;
             } catch (IOException e) {
                 e.printStackTrace();
             }
+            return;
         } else if (method.equals("POST")) {
             this.writePostResponse(fields, client);
             return;
         }
-
+        
         byte[] defaultResponse = constructErrorResponse(400, "Bad Request").getBytes();
         try {
             client.write(ByteBuffer.wrap(defaultResponse));
@@ -217,22 +287,22 @@ public class RequestHandler {
     private String isValid(Hashtable<String, String> fields) {
         // Check for required fields
         if (!fields.containsKey("Method") ||
-                !fields.containsKey("Path") ||
-                !fields.containsKey("Version")) {
+        !fields.containsKey("Path") ||
+        !fields.containsKey("Version")) {
             return constructErrorResponse(400, "Bad Request");
         }
-
+        
         // Check for valid method
         if (!fields.get("Method").equals("GET") &&
-                !fields.get("Method").equals("POST")) {
+        !fields.get("Method").equals("POST")) {
             return constructErrorResponse(400, "Bad Request");
         }
-
+        
         // Check for valid version
-        if (!fields.get("Version").equals("HTTP/1.1")) {
+        if (!fields.get("Version").equals("HTTP/1.1") && !fields.get("Version").equals("HTTP/1.0")) {
             return constructErrorResponse(400, "Bad Request");
         }
-
+        
         // Bad host check
         if (fields.get("Host") != null && this.locations.getLocation(fields.get("Host")) == null) {
             return constructErrorResponse(400, "Bad Request");

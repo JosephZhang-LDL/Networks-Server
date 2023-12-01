@@ -8,10 +8,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.ArrayList;
-import java.util.Hashtable;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Set;
 
 public class SocketHandler implements Runnable {
@@ -23,7 +20,7 @@ public class SocketHandler implements Runnable {
     private ControlThreadHandler threadpool;
 
     public SocketHandler(Selector selector, Locations locations, AuthorizationCache authorizationCache,
-            RequestHandler handler, ControlThreadHandler controlThreadHandler) {
+            ControlThreadHandler controlThreadHandler) {
         this.selector = selector;
         this.locations = locations;
         this.authorizationCache = authorizationCache;
@@ -36,10 +33,6 @@ public class SocketHandler implements Runnable {
     }
 
     public void run() {
-        Hashtable<String, String> fields = new Hashtable<String, String>();
-        List<Byte> responseBuffer = new ArrayList<Byte>();
-        SelectionKey serverKey = null;
-
         try {
             while (true) {
                 int readyCount = selector.select(3000);
@@ -55,7 +48,6 @@ public class SocketHandler implements Runnable {
                     iterator.remove();
 
                     if (key.isAcceptable()) {
-                        serverKey = key;
                         ServerSocketChannel server = (ServerSocketChannel) key.channel();
 
                         SocketChannel client = server.accept();
@@ -69,40 +61,52 @@ public class SocketHandler implements Runnable {
                         int BUFFER_SIZE = 1024;
                         ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
 
+                        // Read into buffer
                         try {
                             client.read(buffer);
-
-                            // handler.readRequest(fields, new String(buffer.array(), "UTF-8"),
-                            // responseBuffer, client);
-                            //ReadRunnable readRunnable = new ReadRunnable(fields, responseBuffer, client, buffer,
-                            //        handler);
-                            //threadpool.submit(readRunnable);
-
-                            List<Byte> res = handler.readRequestNew(fields, new String(buffer.array(), "UTF-8"),
-                                    responseBuffer, client);
-                            key.attach(res);
-                            
-                            buffer.clear();
-                            
+                            buffer.flip();
                         } catch (IOException e) {
                             e.printStackTrace();
                             continue;
                         }
+
+                        // Create new RequestHandler and read request
+                        RequestHandler currRequest = new RequestHandler(locations, authorizationCache);
+                        currRequest.readRequestNew(new String(buffer.array(), "UTF-8"), client);
+                        
+                        key.attach(currRequest);
+
+                        buffer.clear();
+
                         key.interestOps(SelectionKey.OP_WRITE);
-                        //client.register(selector, SelectionKey.OP_WRITE);
                     } else if (key.isWritable()) {
                         SocketChannel client = (SocketChannel) key.channel();
-                        List<Byte> res = (List<Byte>) key.attachment();
-                        // handler.writeResponse(fields, fields.get("Method"), responseBuffer, client);
-                        WriteRunnable writeRunnable = new WriteRunnable(fields, res, client, handler, serverKey);
-                        threadpool.submit(writeRunnable);
+                        RequestHandler res = (RequestHandler) key.attachment();
 
-                        if (fields.containsKey("Connection") && fields.get("Connection").equals("close")) {
-                            client.close();
-                        } else {
-                            key.interestOps(SelectionKey.OP_READ);
-                            //client.register(selector, SelectionKey.OP_CONNECT);
-                        }
+                        res.writeResponseNew(client, key);
+
+                        key.cancel();
+                        client.close();
+
+                        /*
+                         * if (fields.containsKey("Connection") &&
+                         * fields.get("Connection").equals("Keep Alive")) {
+                         * key.interestOps(SelectionKey.OP_READ);
+                         * System.out.println("Keep alive");
+                         * client.close();
+                         * } else {
+                         */
+                        // System.out.println("Closing connection");
+                        // Sleep 500ms to allow client to receive response
+                        /*
+                         * try {
+                         * Thread.sleep(3);
+                         * } catch (InterruptedException e) {
+                         * e.printStackTrace();
+                         * }
+                         */
+                        // client.register(selector, SelectionKey.OP_CONNECT);
+                        // }
 
                     }
                 }

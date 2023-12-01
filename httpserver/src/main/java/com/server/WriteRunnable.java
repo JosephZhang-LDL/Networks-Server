@@ -1,10 +1,9 @@
 package com.server;
 
-import java.io.IOException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.util.List;
 import java.util.Hashtable;
+import java.util.List;
 
 public class WriteRunnable implements Runnable {
     Hashtable<String, String> fields;
@@ -32,6 +31,11 @@ public class WriteRunnable implements Runnable {
 
                 responseBuffer.clear();
                 fields.clear();
+                try {
+                    client.close();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
         }
 
