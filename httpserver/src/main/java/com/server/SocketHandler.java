@@ -16,16 +16,16 @@ public class SocketHandler implements Runnable {
     private Locations locations;
     private AuthorizationCache authorizationCache;
     private Selector selector;
-    private RequestHandler handler;
     private ControlThreadHandler threadpool;
+    private ServerCache serverCache;
 
     public SocketHandler(Selector selector, Locations locations, AuthorizationCache authorizationCache,
-            ControlThreadHandler controlThreadHandler) {
+            ControlThreadHandler controlThreadHandler, ServerCache serverCache) {
         this.selector = selector;
         this.locations = locations;
         this.authorizationCache = authorizationCache;
-        this.handler = handler;
         this.threadpool = controlThreadHandler;
+        this.serverCache = serverCache;
     }
 
     public String errorResponse(Exception e) {
@@ -51,7 +51,6 @@ public class SocketHandler implements Runnable {
                     iterator.remove();
 
                     if (key.isAcceptable()) {
-                        System.out.println("Acceptable");
                         ServerSocketChannel server = (ServerSocketChannel) key.channel();
 
                         SocketChannel client = server.accept();
@@ -85,9 +84,8 @@ public class SocketHandler implements Runnable {
                         }
 
                         // Create new RequestHandler and read request
-                        System.out.println(request);
                         if (request.contains("\r\n\r\n")) {
-                            RequestHandler currRequest = new RequestHandler(locations, authorizationCache);
+                            RequestHandler currRequest = new RequestHandler(locations, authorizationCache, serverCache);
                             currRequest.readRequestNew(request, client);
                             key.attach(currRequest);
                             buffer.clear();
@@ -95,7 +93,6 @@ public class SocketHandler implements Runnable {
                         }
 
                     } else if (key.isWritable()) {
-                        System.out.println("writable");
                         SocketChannel client = (SocketChannel) key.channel();
                         RequestHandler res = (RequestHandler) key.attachment();
 

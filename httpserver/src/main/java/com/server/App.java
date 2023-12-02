@@ -28,6 +28,10 @@ public final class App {
         // Set up authorization cache
         AuthorizationCache authorizationCache = new AuthorizationCache();
 
+        // Set up server cache
+        int CAPACITY = 1024;
+        ServerCache serverCache = new ServerCache(CAPACITY);
+
 
         ServerSocketChannel serverChannel = ServerSocketChannel.open();
         serverChannel.configureBlocking(false);
@@ -46,7 +50,7 @@ public final class App {
         for (int i=0; i < configurationHandler.getNSelectLoops(); i++) {
             Selector selector = Selector.open();
             serverChannel.register(selector, SelectionKey.OP_ACCEPT);
-            SocketHandler handler = new SocketHandler(selector, locations, authorizationCache, controlThreadHandler);
+            SocketHandler handler = new SocketHandler(selector, locations, authorizationCache, controlThreadHandler, serverCache);
             controlThreadHandler.submit(handler);
         }
     }

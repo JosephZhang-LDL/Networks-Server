@@ -1,5 +1,7 @@
 package com.server;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
@@ -16,13 +18,13 @@ class ServerCache {
         this.lruList = new ConcurrentLinkedDeque<String>();
     }
 
-    public Byte[] get(String key) {
+    public List<Byte> get(String key) {
         synchronized (this) {
             if (cache.containsKey(key)) {
                 // Move the accessed element to the end of the list
                 lruList.remove(key);
                 lruList.addLast(key);
-                return cache.get(key);
+                return Arrays.asList(cache.get(key));
             }
         }
         return null;

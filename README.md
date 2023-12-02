@@ -113,7 +113,7 @@ We use ExecutorService to maintain a threadpool for I/O tasks. We maintain the t
 We currently have a select structure set up where the Selector will poll for keys. If a key is acceptable, it will connect to the server and be marked as readable. Then, if a key is readable, a new thread from the threadpool would take on the task of reading it before marking the key as writable. In this time, the async runnable task will be locked using synchronized over the fields the runnable is writing into. Finally, if a key is readable, a new thread from the threadpool would output in the same way before checking the Connection header to see if the socket should be closed or returned to a connect state.
 
 ## Performance and Benchmarking
-To benchmark our performance, we have used Apache Benchmark, as suggested. Our server performs with a transfer rate of [TRANSFER_RATE] after we remove the print to console we use for debugging.
+To benchmark our performance, we have used Apache Benchmark, as suggested. Our server performs with a transfer rate of 1366 Kbytes/sec after we remove the print to console we use for debugging.
 To test our performance, we tested primarily using POSTMAN, but also a suite of curl requests:
 We test our GET method in ways including testing:
     ../ outside of the stack.
@@ -128,5 +128,8 @@ We test our GET method in ways including testing:
 
 
 ## Best Throughput
+On a randomly chosen test, our server's 1366 Kbytes/sec surpasses the 10Mbps benchmark.
 
 ## Compliance
+We comply with HTTP 1.1 by using HTTP 1.1's standards. For instance, connections are assume to be closed unless keep-alive is clearly indicated.
+In addition, we ensured that our responses could be parsed using curl's 1.1 setting instead of the higher level HTTPs.

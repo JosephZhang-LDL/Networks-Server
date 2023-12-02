@@ -37,11 +37,13 @@ public class RequestHandler {
     private Locations locations = null;
     private List<Byte> finalResponse;
     private boolean invalidResponse = false;
+    private ServerCache serverCache;
 
-    public RequestHandler(Locations locations, AuthorizationCache authCache) {
+    public RequestHandler(Locations locations, AuthorizationCache authCache, ServerCache serverCache) {
         this.authCache = authCache;
         this.locations = locations;
         this.finalResponse = new ArrayList<Byte>();
+        this.serverCache = serverCache;
     }
 
     public Hashtable<String, String> getFields() {
@@ -57,20 +59,32 @@ public class RequestHandler {
      */
     public List<Byte> readRequestNew(String request, SocketChannel clientSocket) {
         this.parseHeaders(this.fields, request);
+        boolean found = true;
 
-
+        // check for server cache
+        if (serverCache.get(this.fields.toString()) != null) {
+            return serverCache.get(this.fields.toString());
+        } else {
+            found = false;
+        }
         String valid = this.isValid(this.fields);
 
         List<Byte> responseBytes = new ArrayList<Byte>();
 
         if (valid.length() != 0) {
-
             byte[] response = valid.getBytes();
             for (byte b : response) {
                 responseBytes.add(b);
             }
             this.finalResponse = responseBytes;
             this.invalidResponse = true;
+            if (!found) {
+                Byte[] returns = new Byte[responseBytes.size()];
+                for (int i = 0; i< responseBytes.size(); i++) {
+                    returns[i] = Byte.valueOf(responseBytes.get(i));
+                }
+                serverCache.put(request, returns);
+            }
             return responseBytes;
         }
 
@@ -86,6 +100,16 @@ public class RequestHandler {
         // copy response bytes into final response
         for (byte b : responseBytes) {
             this.finalResponse.add(b);
+        }
+
+        // check for server cache
+        if (!found) {
+            byte[] temp = finalResponse.getBytes();
+            Byte[] returns = new Byte[temp.length];
+            for (int i = 0; i< temp.length; i++) {
+                returns[i] = Byte.valueOf(temp[i]);
+            }
+            serverCache.put(request, returns);
         }
 
         return responseBytes;
@@ -339,6 +363,7 @@ public class RequestHandler {
 
         // BAD FILE CHECK: if path tries to go out of bounds
         if (filePath.contains("..")) {
+
             String resolvedRelativePath = this.createPath(fields.get("Path"));
             if (resolvedRelativePath == null) {
                 return constructErrorResponse(400, "Bad Request");
@@ -350,8 +375,8 @@ public class RequestHandler {
         // EMPTY PATH CHECK
         if (filePath.charAt(filePath.length() - 1) == '/' || new File(filePath).isDirectory()) {
             // check for mobile
-
-            if (fields.contains("User-Agent") && fields.get("User-Agent").matches(".*iPhone.*|.*android.*")) {
+            // System.out.println(fields.get("User-Agent"));
+            if (fields.containsKey("User-Agent") && fields.get("User-Agent").matches(".*iPhone.*|.*android.*")) {
                 File f = new File(filePath + "index_m.html");
                 if (f.exists() && !f.isDirectory()) {
                     filePath = filePath + "index_m.html";
