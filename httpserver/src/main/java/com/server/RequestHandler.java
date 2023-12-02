@@ -36,11 +36,16 @@ public class RequestHandler {
     private AuthorizationCache authCache = new AuthorizationCache();
     private Locations locations = null;
     private List<Byte> finalResponse;
+    private boolean invalidResponse = false;
 
     public RequestHandler(Locations locations, AuthorizationCache authCache) {
         this.authCache = authCache;
         this.locations = locations;
         this.finalResponse = new ArrayList<Byte>();
+    }
+
+    public Hashtable<String, String> getFields() {
+        return fields;
     }
 
     /**
@@ -51,27 +56,35 @@ public class RequestHandler {
      * @return the error response or empty string "" if the request is valid
      */
     public List<Byte> readRequestNew(String request, SocketChannel clientSocket) {
+        // System.out.println("here");
         this.parseHeaders(this.fields, request);
+
+
         String valid = this.isValid(this.fields);
+        System.out.println(valid);
+
         List<Byte> responseBytes = new ArrayList<Byte>();
-        
+
         if (valid.length() != 0) {
+
             byte[] response = valid.getBytes();
             for (byte b : response) {
                 responseBytes.add(b);
             }
+            this.finalResponse = responseBytes;
+            this.invalidResponse = true;
             return responseBytes;
         }
-        
+
         String finalResponse = this.readFile(fields, responseBytes, clientSocket);
-        
+
         if (finalResponse.length() != 0) {
             byte[] response = finalResponse.getBytes();
             for (byte b : response) {
                 responseBytes.add(b);
             }
         }
-        
+
         // copy response bytes into final response
         for (byte b : responseBytes) {
             this.finalResponse.add(b);
@@ -114,6 +127,19 @@ public class RequestHandler {
     public void writeResponseNew(SocketChannel client, SelectionKey key) {
         String method = fields.get("Method");
         List<Byte> response = this.finalResponse;
+        System.out.println(response);
+
+        byte[] defaultResponse = constructErrorResponse(400, "Bad Request").getBytes();
+
+
+        if (this.invalidResponse) {
+            try {
+                client.write(ByteBuffer.wrap(defaultResponse));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return;
+        }
 
         if (fields.get("Path").equals("/heartbeat")){
             try {
@@ -167,13 +193,13 @@ public class RequestHandler {
             this.writePostResponse(fields, client);
             return;
         }
-        
-        byte[] defaultResponse = constructErrorResponse(400, "Bad Request").getBytes();
+
         try {
             client.write(ByteBuffer.wrap(defaultResponse));
         } catch (IOException e) {
             e.printStackTrace();
         }
+
     }
 
     public void writeResponse(Hashtable<String, String> fields, String method, List<Byte> response, SocketChannel client, SelectionKey key) {
@@ -227,7 +253,7 @@ public class RequestHandler {
             this.writePostResponse(fields, client);
             return;
         }
-        
+
         byte[] defaultResponse = constructErrorResponse(400, "Bad Request").getBytes();
         try {
             client.write(ByteBuffer.wrap(defaultResponse));
@@ -244,15 +270,19 @@ public class RequestHandler {
      */
     private void parseHeaders(Hashtable<String, String> fields, String request) {
         String[] sections = request.split("\r\n\r\n");
-
         // Read each header field line into a hash table
         String[] headerLines = sections[0].split("\r\n");
 
+        if (headerLines.length == 1){
+                System.out.println("here");
+                return;
+        }
         // Initial parsing of data
         for (int i = 0; i < headerLines.length; i++) {
             String line = headerLines[i];
             String[] lineSplit = line.split(":", 2);
             // If it's the method header
+
             if (lineSplit.length < 2) {
                 lineSplit = line.split(" ");
                 fields.put("Method", lineSplit[0]);
@@ -269,7 +299,7 @@ public class RequestHandler {
         if (sections.length > 1) {
             fields.put("Body", sections[1]);
         }
-
+        //  System.out.println("fucl");
         // Print out the hash table
         // for (String key : fields.keySet()) {
         //     System.out.println(key + ": " + fields.get(key));
@@ -286,23 +316,24 @@ public class RequestHandler {
      */
     private String isValid(Hashtable<String, String> fields) {
         // Check for required fields
+        System.out.println(fields.toString());
         if (!fields.containsKey("Method") ||
         !fields.containsKey("Path") ||
         !fields.containsKey("Version")) {
             return constructErrorResponse(400, "Bad Request");
         }
-        
+
         // Check for valid method
         if (!fields.get("Method").equals("GET") &&
         !fields.get("Method").equals("POST")) {
             return constructErrorResponse(400, "Bad Request");
         }
-        
+
         // Check for valid version
         if (!fields.get("Version").equals("HTTP/1.1") && !fields.get("Version").equals("HTTP/1.0")) {
             return constructErrorResponse(400, "Bad Request");
         }
-        
+
         // Bad host check
         if (fields.get("Host") != null && this.locations.getLocation(fields.get("Host")) == null) {
             return constructErrorResponse(400, "Bad Request");
@@ -323,10 +354,12 @@ public class RequestHandler {
             filePath = hostPath + resolvedRelativePath;
         }
 
+
         // EMPTY PATH CHECK
         if (filePath.charAt(filePath.length() - 1) == '/' || new File(filePath).isDirectory()) {
             // check for mobile
-            if (fields.get("User-Agent").matches(".*iPhone.*|.*android.*")) {
+
+            if (fields.contains("User-Agent") && fields.get("User-Agent").matches(".*iPhone.*|.*android.*")) {
                 File f = new File(filePath + "index_m.html");
                 if (f.exists() && !f.isDirectory()) {
                     filePath = filePath + "index_m.html";

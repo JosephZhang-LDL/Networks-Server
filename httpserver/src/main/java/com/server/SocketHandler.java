@@ -34,6 +34,7 @@ public class SocketHandler implements Runnable {
 
     public void run() {
         try {
+            String request = "";
             while (true) {
                 int readyCount = selector.select(3000);
                 if (readyCount == 0) {
@@ -43,7 +44,9 @@ public class SocketHandler implements Runnable {
                 Set<SelectionKey> readyKeys = selector.selectedKeys();
                 Iterator<SelectionKey> iterator = readyKeys.iterator();
 
+
                 while (iterator.hasNext()) {
+
                     SelectionKey key = iterator.next();
                     iterator.remove();
 
@@ -53,6 +56,8 @@ public class SocketHandler implements Runnable {
                         SocketChannel client = server.accept();
                         client.configureBlocking(false);
                         client.register(selector, SelectionKey.OP_READ);
+
+                        request = "";
                     }
 
                     if (key.isReadable()) {
@@ -61,7 +66,6 @@ public class SocketHandler implements Runnable {
                         int BUFFER_SIZE = 1024;
                         ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
 
-                        // Read into buffer
                         try {
                             client.read(buffer);
                             buffer.flip();
@@ -69,33 +73,46 @@ public class SocketHandler implements Runnable {
                             e.printStackTrace();
                             continue;
                         }
+                        // Read into buffer
+                        String t_str = new String(buffer.array(), "UTF-8");
+                        for (int i=0; i<BUFFER_SIZE; i++) {
+                            if ((int) t_str.charAt(i) != 0 ) {
+                                request += t_str.charAt(i);
+                            } else {
+                                break;
+                            }
+                        }
 
                         // Create new RequestHandler and read request
-                        RequestHandler currRequest = new RequestHandler(locations, authorizationCache);
-                        currRequest.readRequestNew(new String(buffer.array(), "UTF-8"), client);
-                        
-                        key.attach(currRequest);
+                        if (request.contains("\r\n\r\n")) {
+                            RequestHandler currRequest = new RequestHandler(locations, authorizationCache);
+                            currRequest.readRequestNew(request, client);
 
-                        buffer.clear();
+                            key.attach(currRequest);
 
-                        key.interestOps(SelectionKey.OP_WRITE);
+                            buffer.clear();
+
+                            key.interestOps(SelectionKey.OP_WRITE);
+                        }
+
                     } else if (key.isWritable()) {
                         SocketChannel client = (SocketChannel) key.channel();
                         RequestHandler res = (RequestHandler) key.attachment();
 
                         res.writeResponseNew(client, key);
 
-                        key.cancel();
-                        client.close();
+                        if (res.getFields().containsKey("Connection") &&
+                            res.getFields().get("Connection").equals("Keep Alive")) {
+                                System.out.println("Keep alive");
+                                key.interestOps(SelectionKey.OP_READ);
+                                request = "";
+                                // client.close();
+                        } else {
+                            key.cancel();
+                            client.close();
+                        }
+                        //else {
 
-                        /*
-                         * if (fields.containsKey("Connection") &&
-                         * fields.get("Connection").equals("Keep Alive")) {
-                         * key.interestOps(SelectionKey.OP_READ);
-                         * System.out.println("Keep alive");
-                         * client.close();
-                         * } else {
-                         */
                         // System.out.println("Closing connection");
                         // Sleep 500ms to allow client to receive response
                         /*
