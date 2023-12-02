@@ -13,7 +13,7 @@ public class ControlThreadHandler implements Runnable {
     BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
     private String line;
     private ServerSocketChannel serverSocket;
-    private static final int THREAD_POOL_SIZE = 20;
+    private static final int THREAD_POOL_SIZE = 30;
     private final ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
 
     public ControlThreadHandler(ServerSocketChannel serverSocket) {
@@ -33,6 +33,8 @@ public class ControlThreadHandler implements Runnable {
             if (!threadPool.awaitTermination(10, TimeUnit.SECONDS)) {
                 // Timeout occurred before all tasks completed
                 threadPool.shutdownNow();
+                serverSocket.close();
+                System.exit(0);
                 System.err.println("Thread pool did not terminate");
             }
             serverSocket.close();

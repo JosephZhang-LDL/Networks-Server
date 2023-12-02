@@ -56,12 +56,10 @@ public class RequestHandler {
      * @return the error response or empty string "" if the request is valid
      */
     public List<Byte> readRequestNew(String request, SocketChannel clientSocket) {
-        // System.out.println("here");
         this.parseHeaders(this.fields, request);
 
 
         String valid = this.isValid(this.fields);
-        System.out.println(valid);
 
         List<Byte> responseBytes = new ArrayList<Byte>();
 
@@ -127,7 +125,6 @@ public class RequestHandler {
     public void writeResponseNew(SocketChannel client, SelectionKey key) {
         String method = fields.get("Method");
         List<Byte> response = this.finalResponse;
-        System.out.println(response);
 
         byte[] defaultResponse = constructErrorResponse(400, "Bad Request").getBytes();
 
@@ -240,8 +237,6 @@ public class RequestHandler {
             for (int i = 0; i < response.size(); i++) {
                 responseBytes[i] = response.get(i);
             }
-            //System.out.println("Writing response");
-            //System.out.println(responseBytes.length);
             try {
                 client.write(ByteBuffer.wrap(responseBytes));
                 return;
@@ -274,7 +269,6 @@ public class RequestHandler {
         String[] headerLines = sections[0].split("\r\n");
 
         if (headerLines.length == 1){
-                System.out.println("here");
                 return;
         }
         // Initial parsing of data
@@ -299,7 +293,6 @@ public class RequestHandler {
         if (sections.length > 1) {
             fields.put("Body", sections[1]);
         }
-        //  System.out.println("fucl");
         // Print out the hash table
         // for (String key : fields.keySet()) {
         //     System.out.println(key + ": " + fields.get(key));
@@ -316,7 +309,6 @@ public class RequestHandler {
      */
     private String isValid(Hashtable<String, String> fields) {
         // Check for required fields
-        System.out.println(fields.toString());
         if (!fields.containsKey("Method") ||
         !fields.containsKey("Path") ||
         !fields.containsKey("Version")) {

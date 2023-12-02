@@ -36,7 +36,7 @@ public class SocketHandler implements Runnable {
         try {
             String request = "";
             while (true) {
-                int readyCount = selector.select(3000);
+                int readyCount = selector.select(10000);
                 if (readyCount == 0) {
                     continue;
                 }
@@ -51,6 +51,7 @@ public class SocketHandler implements Runnable {
                     iterator.remove();
 
                     if (key.isAcceptable()) {
+                        System.out.println("Acceptable");
                         ServerSocketChannel server = (ServerSocketChannel) key.channel();
 
                         SocketChannel client = server.accept();
@@ -63,7 +64,7 @@ public class SocketHandler implements Runnable {
                     if (key.isReadable()) {
                         SocketChannel client = (SocketChannel) key.channel();
 
-                        int BUFFER_SIZE = 1024;
+                        int BUFFER_SIZE = 2048;
                         ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
 
                         try {
@@ -84,18 +85,17 @@ public class SocketHandler implements Runnable {
                         }
 
                         // Create new RequestHandler and read request
+                        System.out.println(request);
                         if (request.contains("\r\n\r\n")) {
                             RequestHandler currRequest = new RequestHandler(locations, authorizationCache);
                             currRequest.readRequestNew(request, client);
-
                             key.attach(currRequest);
-
                             buffer.clear();
-
                             key.interestOps(SelectionKey.OP_WRITE);
                         }
 
                     } else if (key.isWritable()) {
+                        System.out.println("writable");
                         SocketChannel client = (SocketChannel) key.channel();
                         RequestHandler res = (RequestHandler) key.attachment();
 
