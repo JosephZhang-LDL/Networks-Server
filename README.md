@@ -1,6 +1,8 @@
 # Networks-Server
 Java HTTP Server for CPSC 434/534
 
+**Authors**: Alex Shi and Joseph Zhang
+
 # How to Run
 Navigate to the right directory. Assuming you're in ```/Networks-Server```:
 
@@ -39,7 +41,8 @@ to activate the server. Some of the current configurations use relative pathing 
     ├── goof.txt
     ├── image.png
     ├── index.html
-    └── index2.txt
+    ├── index2.txt
+    └── index_m.html
 ```
 ## File breakdowns
 * `App` : We initialize most handlers and run the server from App
