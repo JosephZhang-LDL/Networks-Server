@@ -62,8 +62,12 @@ public class RequestHandler {
         boolean found = true;
 
         // check for server cache
-        if (serverCache.get(this.fields.toString()) != null) {
-            return serverCache.get(this.fields.toString());
+        List<Byte> res;
+        if (serverCache.get(request) != null) {
+            // System.out.println("CACHED");
+            res = serverCache.get(request);
+            this.finalResponse = res;
+            return res;
         } else {
             found = false;
         }
@@ -104,14 +108,15 @@ public class RequestHandler {
 
         // check for server cache
         if (!found) {
-            byte[] temp = finalResponse.getBytes();
-            Byte[] returns = new Byte[temp.length];
-            for (int i = 0; i< temp.length; i++) {
-                returns[i] = Byte.valueOf(temp[i]);
+            //byte[] temp = finalResponse.getBytes();
+            Byte[] returns = new Byte[responseBytes.size()];
+            for (int i = 0; i < responseBytes.size(); i++) {
+                returns[i] = responseBytes.get(i);
             }
             serverCache.put(request, returns);
         }
 
+        // System.out.println(responseBytes.toString());
         return responseBytes;
     }
 
@@ -292,9 +297,9 @@ public class RequestHandler {
         // Read each header field line into a hash table
         String[] headerLines = sections[0].split("\r\n");
 
-        if (headerLines.length == 1){
-                return;
-        }
+        // if (headerLines.length == 1){
+        //         return;
+        // }
         // Initial parsing of data
         for (int i = 0; i < headerLines.length; i++) {
             String line = headerLines[i];
@@ -492,7 +497,7 @@ public class RequestHandler {
                 env.put("SERVER_PROTOCOL", this.fields.get("Version"));
                 env.put("SERVER_SOFTWARE", "Java/" + System.getProperty("java.version"));
                 env.put("CONTENT_LENGTH", Integer.toString(queryString.length()));
-                System.out.println(env.toString());
+                // System.out.println(env.toString());
 
                 Process process = pb.start();
                 BufferedReader process_in = new BufferedReader(new InputStreamReader(process.getInputStream()));
@@ -520,7 +525,7 @@ public class RequestHandler {
                     responseBody += character;
                 }
 
-                System.out.println(responseBody);
+                // System.out.println(responseBody);
                 try {
                     if (process.waitFor() != 0) {
                         return constructErrorResponse(400, "Bad Request");
@@ -670,12 +675,15 @@ public class RequestHandler {
                     && fields.get("Transfer-Encoding").equals("chunked")) {
                 String proc_line;
                 String content_type = "";
+
                 while ((proc_line = process_in.readLine()) != null) {
-                    if (proc_line.split(":")[0].equals("Content-Type")) {
-                        content_type = proc_line + "\r\n\r\n";
+                    if (proc_line.split(":")[0].equalsIgnoreCase("Content-type")) {
+                        // System.out.println(proc_line);
+                        content_type = proc_line + "\r\n";
                         break;
                     }
                 }
+
                 String chunked_response = "HTTP/1.1 200 OK\r\n" +
                         "Date: " + new Date() + "\r\n" +
                         "Server: JZAS Server\r\n" +
@@ -683,14 +691,18 @@ public class RequestHandler {
                         "Transfer-Encoding: chunked\r\n" +
                         content_type;
 
+                System.out.println("-----------------------");
+                System.out.println(chunked_response);
+                System.out.println("-----------------------");
+
                 client.write(ByteBuffer.wrap((chunked_response).getBytes()));
 
                 while ((proc_line = process_in.readLine()) != null) {
+                    System.out.println(proc_line);
                     if (proc_line.length() == 0) {
                         continue;
                     }
-                    client.write(
-                            ByteBuffer.wrap((Integer.toHexString((proc_line.length())) + "\r\n" +
+                    client.write(ByteBuffer.wrap((Integer.toHexString((proc_line.length())) + "\r\n" +
                                     proc_line + "\r\n").getBytes()));
                 }
 
@@ -749,6 +761,13 @@ public class RequestHandler {
 
         } catch (IOException e) {
             e.printStackTrace();
+            try {
+                client.write(ByteBuffer.wrap(constructErrorResponse(404, "Not Found").getBytes()));
+                return;
+            } catch (IOException e2) {
+                e2.printStackTrace();
+            }
+
             //socketHandler.write(constructErrorResponse(404, "Unable to Read the File").getBytes());
         }
     }

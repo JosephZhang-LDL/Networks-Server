@@ -10,6 +10,7 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class SocketHandler implements Runnable {
     private Socket clientSocket;
@@ -32,6 +33,8 @@ public class SocketHandler implements Runnable {
         return "HTTP/1.1 500 " + e.toString() + "\r\n";
     }
 
+    ConcurrentHashMap<SocketChannel, Long> lastActiveMap = new ConcurrentHashMap<SocketChannel, Long>();
+
     public void run() {
         try {
             String request = "";
@@ -40,6 +43,7 @@ public class SocketHandler implements Runnable {
                 if (readyCount == 0) {
                     continue;
                 }
+
 
                 Set<SelectionKey> readyKeys = selector.selectedKeys();
                 Iterator<SelectionKey> iterator = readyKeys.iterator();
@@ -50,6 +54,15 @@ public class SocketHandler implements Runnable {
                     SelectionKey key = iterator.next();
                     iterator.remove();
 
+                    // time out
+                    long currentTime = System.currentTimeMillis();
+                    for (SocketChannel channel : lastActiveMap.keySet()) {
+                        if (currentTime - lastActiveMap.get(channel) > 3000) {
+                            // Close this channel due to timeout
+                            channel.close();
+                        }
+                    }
+
                     if (key.isAcceptable()) {
                         ServerSocketChannel server = (ServerSocketChannel) key.channel();
 
@@ -58,6 +71,7 @@ public class SocketHandler implements Runnable {
                         client.register(selector, SelectionKey.OP_READ);
 
                         request = "";
+                        lastActiveMap.put(client, System.currentTimeMillis());
                     }
 
                     if (key.isReadable()) {
@@ -92,14 +106,15 @@ public class SocketHandler implements Runnable {
                             key.interestOps(SelectionKey.OP_WRITE);
                         }
 
+                        lastActiveMap.put(client, System.currentTimeMillis());
                     } else if (key.isWritable()) {
                         SocketChannel client = (SocketChannel) key.channel();
                         RequestHandler res = (RequestHandler) key.attachment();
 
                         res.writeResponseNew(client, key);
 
-                        if (res.getFields().containsKey("Connection") &&
-                            res.getFields().get("Connection").equals("Keep Alive")) {
+                        if (!(res.getFields().containsKey("Connection") &&
+                            res.getFields().get("Connection").equals("Close"))) {
                                 System.out.println("Keep alive");
                                 key.interestOps(SelectionKey.OP_READ);
                                 request = "";
@@ -108,21 +123,19 @@ public class SocketHandler implements Runnable {
                             key.cancel();
                             client.close();
                         }
-                        //else {
 
-                        // System.out.println("Closing connection");
-                        // Sleep 500ms to allow client to receive response
-                        /*
-                         * try {
-                         * Thread.sleep(3);
-                         * } catch (InterruptedException e) {
-                         * e.printStackTrace();
-                         * }
-                         */
-                        // client.register(selector, SelectionKey.OP_CONNECT);
-                        // }
-
+                        lastActiveMap.put(client, System.currentTimeMillis());
                     }
+
+
+                    // long activeTime = System.currentTimeMillis();
+                    // System.out.println(activeTime);
+                    // System.out.println(currentTime);
+                    // if (Math.abs(activeTime - currentTime) > 3000) {
+                    //     key.cancel();
+                    //     SocketChannel client = (SocketChannel) key.channel();
+                    //     client.close();
+                    // }
                 }
             }
         } catch (IOException e) {

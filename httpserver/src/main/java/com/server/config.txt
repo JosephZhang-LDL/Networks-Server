@@ -3,10 +3,10 @@ nSelectLoops 16
 
 <VirtualHost *:80>
     DocumentRoot "SampleSite"
-    ServerName www.example.com
+    ServerName host1.cs.yale.edu
 </VirtualHost>
 
 <VirtualHost *:80>
-    DocumentRoot "/www/example2"
-    ServerName www.example.org
+    DocumentRoot "Sample2"
+    ServerName host2.cs.yale.edu
 </VirtualHost>

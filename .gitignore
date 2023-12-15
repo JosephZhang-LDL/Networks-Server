@@ -1,1 +1,6 @@
 *.class
+SampleSite/
+Sample1/
+Sample2/
+*.txt
+*.tar
