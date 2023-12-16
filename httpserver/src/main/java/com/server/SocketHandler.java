@@ -113,8 +113,8 @@ public class SocketHandler implements Runnable {
 
                         res.writeResponseNew(client, key);
 
-                        if (!(res.getFields().containsKey("Connection") &&
-                            res.getFields().get("Connection").equals("Close"))) {
+                        if ((res.getFields().containsKey("Connection") &&
+                            res.getFields().get("Connection").equals("Keep Alive"))) {
                                 System.out.println("Keep alive");
                                 key.interestOps(SelectionKey.OP_READ);
                                 request = "";
